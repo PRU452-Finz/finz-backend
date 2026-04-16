@@ -1,0 +1,228 @@
+# FinZ Backend API — Walkthrough
+
+Backend REST API untuk **FinZ — AI-Powered Personal Financial Advisor** telah selesai dibangun dan divalidasi. Semua endpoint berjalan penuh dengan data nyata dari MySQL.
+
+---
+
+## Struktur Project
+
+```
+finz-backend/
+├── .env                        ← Konfigurasi environment
+├── package.json
+└── src/
+    ├── app.js                  ← Express setup, CORS, middleware, routing
+    ├── server.js               ← Entry point, DB connect → listen
+    ├── config/
+    │   └── database.js         ← Sequelize + MySQL config
+    ├── models/
+    │   └── Transaction.js      ← Sequelize model (tabel transactions)
+    ├── controllers/
+    │   ├── transactionController.js
+    │   ├── dashboardController.js
+    │   └── aiController.js
+    ├── services/
+    │   ├── transactionService.js  ← CRUD business logic
+    │   ├── dashboardService.js    ← Agregasi & perhitungan bulan ini
+    │   └── aiService.js           ← Mock AI: prediksi, klasifikasi, score
+    ├── routes/
+    │   ├── transactionRoutes.js
+    │   ├── dashboardRoutes.js
+    │   └── aiRoutes.js
+    ├── middlewares/
+    │   ├── validators.js       ← express-validator rules
+    │   ├── requestLogger.js    ← Colorized request log
+    │   └── errorHandler.js     ← Global error handler
+    └── database/
+        └── seeder.js           ← 30 transaksi dummy realistic
+```
+
+---
+
+## Cara Menjalankan
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Buat database MySQL (Laragon sudah aktif)
+# Database: finz_db sudah dibuat
+
+# 3. Isi data dummy (30 transaksi)
+npm run seed
+
+# 4. Jalankan server development
+npm run dev
+# → http://localhost:8000
+```
+
+---
+
+## Semua Endpoint API
+
+### Transactions CRUD
+
+| Method | Endpoint | Keterangan |
+|--------|----------|------------|
+| `GET` | `/api/transactions` | List semua (+ filter `?category=&date_from=&date_to=`) |
+| `GET` | `/api/transactions/:id` | Detail satu transaksi |
+| `POST` | `/api/transactions` | Buat transaksi baru |
+| `PUT` | `/api/transactions/:id` | Update transaksi |
+| `DELETE` | `/api/transactions/:id` | Hapus transaksi |
+
+### Dashboard
+
+| Method | Endpoint | Keterangan |
+|--------|----------|------------|
+| `GET` | `/api/dashboard` | Summary bulan ini (`?user_id=1`) |
+
+### AI Mock Services
+
+| Method | Endpoint | Keterangan |
+|--------|----------|------------|
+| `POST` | `/api/predict/balance` | Prediksi saldo akhir bulan |
+| `POST` | `/api/predict/category` | Klasifikasi kategori dari deskripsi |
+| `GET` | `/api/recommendation/:user_id` | Rekomendasi finansial |
+| `GET` | `/api/financial-score/:user_id` | Health score keuangan |
+
+---
+
+## Screenshot Bukti Endpoint Berjalan
+
+### GET /api/transactions — 30 transaksi berhasil dikembalikan
+
+![Transactions List](C:\Users\Infinix\.gemini\antigravity\brain\a53af1e7-2ebb-4465-92d0-9b5bb147726e\transactions_api_1776352017456.png)
+
+### GET /api/dashboard — Ringkasan keuangan bulan April 2026
+
+![Dashboard Summary](C:\Users\Infinix\.gemini\antigravity\brain\a53af1e7-2ebb-4465-92d0-9b5bb147726e\dashboard_api_1776352018290.png)
+
+### GET /api/financial-score/1 — Score: 72, Level: "Cukup Sehat"
+
+![Financial Score](C:\Users\Infinix\.gemini\antigravity\brain\a53af1e7-2ebb-4465-92d0-9b5bb147726e\financial_score_api_1776352018976.png)
+
+### GET /api/recommendation/1 — 5 Rekomendasi Finansial
+
+![Recommendations](C:\Users\Infinix\.gemini\antigravity\brain\a53af1e7-2ebb-4465-92d0-9b5bb147726e\recommendation_api_1776352026599.png)
+
+---
+
+## Contoh Request & Response
+
+### POST /api/predict/balance
+```json
+// Request
+POST http://localhost:8000/api/predict/balance
+{ "current_balance": 2000000, "user_id": 1 }
+
+// Response
+{
+  "success": true,
+  "data": {
+    "predicted_balance": 500000,
+    "status": "warning",
+    "message": "Pengeluaranmu cukup tinggi bulan ini...",
+    "detail": {
+      "current_balance": 2000000,
+      "spent_so_far": 2360000,
+      "avg_per_day": 181538,
+      "days_remaining": 13
+    }
+  }
+}
+```
+
+### POST /api/predict/category
+```json
+// Request
+{ "description": "makan siang di warteg" }
+
+// Response
+{
+  "success": true,
+  "data": {
+    "category": "makanan",
+    "confidence": "high",
+    "matched_keywords": ["makan", "warteg"]
+  }
+}
+```
+
+### GET /api/financial-score/1
+```json
+{
+  "success": true,
+  "data": {
+    "score": 72,
+    "level": "Cukup Sehat",
+    "breakdown": {
+      "saving_ratio": 53,
+      "spending_consistency": 70,
+      "category_diversity": 100,
+      "bill_payment": 80
+    }
+  }
+}
+```
+
+### GET /api/dashboard
+```json
+{
+  "success": true,
+  "data": {
+    "total_spending": 2360000,
+    "transaction_count": 25,
+    "avg_daily": 181538,
+    "category_breakdown": {
+      "makanan": 311000,
+      "transport": 69000,
+      "belanja": 635000,
+      "hiburan": 225000,
+      "tagihan": 500000,
+      "pendidikan": 350000,
+      "kesehatan": 240000,
+      "lainnya": 30000
+    },
+    "period": { "from": "2026-04-01", "to": "2026-04-30" }
+  }
+}
+```
+
+---
+
+## Database Design
+
+```sql
+CREATE TABLE transactions (
+  id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id        INT UNSIGNED NOT NULL DEFAULT 1,
+  amount         DECIMAL(15,2) NOT NULL,
+  category       ENUM('makanan','transport','hiburan','belanja',
+                      'tagihan','pendidikan','kesehatan','lainnya') NOT NULL,
+  description    VARCHAR(255) NOT NULL DEFAULT '',
+  payment_method ENUM('cash','debit','credit','ewallet','transfer','qris')
+                 NOT NULL DEFAULT 'cash',
+  date           DATE NOT NULL,
+  created_at     DATETIME NOT NULL,
+  INDEX idx_user_id (user_id),
+  INDEX idx_category (category),
+  INDEX idx_date (date)
+);
+```
+
+---
+
+## Validasi (express-validator)
+
+- `amount` / `nominal` → harus number positif, wajib salah satu ada
+- `category` → wajib, harus salah satu ENUM yang valid
+- `payment_method` → opsional, harus salah satu ENUM yang valid
+- `date` → opsional, format `YYYY-MM-DD`
+- `current_balance` → wajib bilangan non-negatif (untuk predict/balance)
+- `description` → wajib string (untuk predict/category)
+
+---
+
+## Recording Sesi Validasi
+
+![API Validation Recording](C:\Users\Infinix\.gemini\antigravity\brain\a53af1e7-2ebb-4465-92d0-9b5bb147726e\api_screenshot_proof_1776351980136.webp)
