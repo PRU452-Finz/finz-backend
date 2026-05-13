@@ -13,11 +13,16 @@ const express    = require('express');
 const cors       = require('cors');
 const path       = require('path');
 
-const requestLogger    = require('./middlewares/requestLogger');
-const errorHandler     = require('./middlewares/errorHandler');
+const requestLogger     = require('./middlewares/requestLogger');
+const errorHandler      = require('./middlewares/errorHandler');
 const transactionRoutes = require('./routes/transactionRoutes');
 const dashboardRoutes   = require('./routes/dashboardRoutes');
 const aiRoutes          = require('./routes/aiRoutes');
+const authRoutes        = require('./routes/authRoutes');
+const userRoutes        = require('./routes/userRoutes');
+const budgetRoutes      = require('./routes/budgetRoutes');
+const budgetAlertRoutes = require('./routes/budgetAlertRoutes');
+const adminRoutes       = require('./routes/adminRoutes');
 
 const app = express();
 
@@ -58,12 +63,19 @@ app.get('/', (req, res) => {
     status: 'running',
     timestamp: new Date().toISOString(),
     endpoints: {
+      auth_register:   '/api/auth/register',
+      auth_login:      '/api/auth/login',
+      auth_me:         '/api/auth/me',
+      users:           '/api/users/:id',
       transactions:    '/api/transactions',
+      budgets:         '/api/budgets/:user_id',
+      budget_alert:    '/api/budget-alert/:user_id',
       dashboard:       '/api/dashboard',
       predictBalance:  '/api/predict/balance',
       predictCategory: '/api/predict/category',
       recommendation:  '/api/recommendation/:user_id',
       financialScore:  '/api/financial-score/:user_id',
+      admin_stats:     '/api/admin/prediction-stats',
     },
   });
 });
@@ -71,9 +83,14 @@ app.get('/', (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // API Routes
 // ─────────────────────────────────────────────────────────────
-app.use('/api/transactions', transactionRoutes);
-app.use('/api/dashboard',    dashboardRoutes);
-app.use('/api',              aiRoutes);   // /api/predict/*, /api/recommendation/*, /api/financial-score/*
+app.use('/api/auth',          authRoutes);
+app.use('/api/users',         userRoutes);
+app.use('/api/transactions',  transactionRoutes);
+app.use('/api/budgets',       budgetRoutes);
+app.use('/api/budget-alert',  budgetAlertRoutes);
+app.use('/api/dashboard',     dashboardRoutes);
+app.use('/api/admin',         adminRoutes);
+app.use('/api',               aiRoutes);   // /api/predict/*, /api/recommendation/*, /api/financial-score/*
 
 // ─────────────────────────────────────────────────────────────
 // 404 Handler

@@ -25,6 +25,9 @@ const formatTransaction = (t) => ({
   description: t.description,
   payment_method: t.payment_method,
   date: t.date,
+  transaction_type: t.transaction_type,
+  hour_of_day: t.hour_of_day,
+  is_recurring: t.is_recurring,
   created_at: t.created_at,
 });
 
@@ -74,6 +77,9 @@ const createTransaction = async (data) => {
     description: data.description || '',
     payment_method: data.payment_method || 'cash',
     date: data.date || new Date().toISOString().slice(0, 10),
+    transaction_type: data.transaction_type || 'expense',
+    hour_of_day: data.hour_of_day ?? new Date().getHours(),
+    is_recurring: data.is_recurring || false,
     created_at: new Date(),
   });
 
@@ -88,11 +94,14 @@ const updateTransaction = async (id, data) => {
   if (!t) return null;
 
   await t.update({
-    amount:         data.amount ?? data.nominal ?? t.amount,
-    category:       data.category       ?? t.category,
-    description:    data.description    ?? t.description,
-    payment_method: data.payment_method ?? t.payment_method,
-    date:           data.date           ?? t.date,
+    amount:           data.amount ?? data.nominal ?? t.amount,
+    category:         data.category         ?? t.category,
+    description:      data.description      ?? t.description,
+    payment_method:   data.payment_method   ?? t.payment_method,
+    date:             data.date             ?? t.date,
+    transaction_type: data.transaction_type  ?? t.transaction_type,
+    hour_of_day:      data.hour_of_day      ?? t.hour_of_day,
+    is_recurring:     data.is_recurring     ?? t.is_recurring,
   });
 
   return formatTransaction(t);

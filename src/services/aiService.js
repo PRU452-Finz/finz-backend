@@ -11,6 +11,7 @@
 
 const { Op } = require('sequelize');
 const Transaction = require('../models/Transaction');
+const User        = require('../models/User');
 
 // ─────────────────────────────────────────────────────────────
 // 1.  Prediksi Saldo Akhir Bulan
@@ -293,9 +294,16 @@ const getFinancialScore = async (user_id = 1) => {
 
   const total = txns.reduce((s, t) => s + parseFloat(t.amount), 0);
 
-  // ── Saving Ratio (simulasi: asumsi pemasukan standar Rp5jt/bulan) ──
-  const ASSUMED_INCOME = 5_000_000;
-  const savingRatio = Math.max(0, Math.min(100, ((ASSUMED_INCOME - total) / ASSUMED_INCOME) * 100));
+  // ── Saving Ratio (ambil pemasukan dari tabel users) ──
+  const DEFAULT_INCOME = 5_000_000;
+  let userIncome = DEFAULT_INCOME;
+  try {
+    const userRecord = await User.findByPk(user_id, { attributes: ['monthly_income'] });
+    if (userRecord && parseFloat(userRecord.monthly_income) > 0) {
+      userIncome = parseFloat(userRecord.monthly_income);
+    }
+  } catch (_) { /* fallback to default */ }
+  const savingRatio = Math.max(0, Math.min(100, ((userIncome - total) / userIncome) * 100));
 
   // ── Spending Consistency (variasi harian) ──
   const dailyMap = {};
