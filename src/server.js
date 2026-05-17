@@ -9,7 +9,7 @@
 require('dotenv').config();
 
 const app       = require('./app');
-const sequelize = require('./config/database');
+const { sequelize } = require('./models'); // Import dari index agar semua association terdaftar
 
 const PORT = process.env.PORT || 8000;
 

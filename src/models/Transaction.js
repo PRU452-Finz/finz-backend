@@ -91,6 +91,27 @@ const Transaction = sequelize.define(
       allowNull: false,
       comment: 'Tanggal transaksi (YYYY-MM-DD)',
     },
+    transaction_type: {
+      type: DataTypes.ENUM('expense', 'income'),
+      allowNull: false,
+      defaultValue: 'expense',
+      comment: 'Jenis transaksi: pengeluaran atau pemasukan',
+    },
+    hour_of_day: {
+      type: DataTypes.TINYINT.UNSIGNED,
+      allowNull: true,
+      validate: {
+        min: 0,
+        max: 23,
+      },
+      comment: 'Jam transaksi (0-23), untuk analisis pola waktu',
+    },
+    is_recurring: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      comment: 'Apakah transaksi ini berulang setiap bulan?',
+    },
     created_at: {
       type: DataTypes.DATE,
       allowNull: false,
