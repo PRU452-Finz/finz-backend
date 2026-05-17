@@ -45,7 +45,17 @@ const predictBalance = async ({ current_balance, user_id = 1 }) => {
     },
   });
 
-  const spentSoFar = rows.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+  // Pisahkan income vs expense
+  let totalIncome = 0;
+  let spentSoFar = 0;
+  for (const t of rows) {
+    const amount = parseFloat(t.amount);
+    if (t.transaction_type === 'income') {
+      totalIncome += amount;
+    } else {
+      spentSoFar += amount;
+    }
+  }
   const avgPerDay = daysPassed > 0 ? spentSoFar / daysPassed : 0;
 
   // ── Coba panggil AI API ────────────────────────────────────
@@ -53,18 +63,19 @@ const predictBalance = async ({ current_balance, user_id = 1 }) => {
     const aiAvailable = await aiClient.isAvailable();
 
     if (aiAvailable) {
-      // Hitung breakdown per kategori (dalam format AI)
+      // Hitung breakdown per kategori (dalam format AI) — hanya expense
       const categoryTotals = {};
       for (const t of rows) {
+        if (t.transaction_type === 'income') continue;
         const aiCat = aiClient.BACKEND_TO_AI_CATEGORY[t.category] || 'Keluarga & Sosial';
         categoryTotals[aiCat] = (categoryTotals[aiCat] || 0) + parseFloat(t.amount);
       }
 
       const saldoPayload = {
         total_pengeluaran: spentSoFar,
-        total_income: parseFloat(current_balance), // saldo awal sebagai proxy income
-        n_transaksi: rows.length,
-        avg_pengeluaran: rows.length > 0 ? spentSoFar / rows.length : 0,
+        total_income: totalIncome || parseFloat(current_balance),
+        n_transaksi: rows.filter(t => t.transaction_type !== 'income').length,
+        avg_pengeluaran: spentSoFar > 0 ? spentSoFar / rows.filter(t => t.transaction_type !== 'income').length : 0,
         saldo_awal: parseFloat(current_balance),
         // Kategori AI — isi 0 jika tidak ada
         'Tagihan':              categoryTotals['Tagihan'] || 0,
@@ -81,8 +92,22 @@ const predictBalance = async ({ current_balance, user_id = 1 }) => {
 
       const aiResult = await aiClient.predictSaldo(saldoPayload);
 
-      const predicted = aiResult.prediksi_saldo_akhir;
-      const ratio = predicted / parseFloat(current_balance);
+      let predicted = aiResult.prediksi_saldo_akhir;
+
+      // Sanity check — prediksi AI tidak boleh melebihi saldo + income
+      // dan tidak boleh lebih rendah dari -(current_balance)
+      const maxReasonable = parseFloat(current_balance) + totalIncome;
+      const minReasonable = -parseFloat(current_balance);
+      if (predicted > maxReasonable || predicted < minReasonable) {
+        // AI model output tidak masuk akal, fallback ke simple math
+        const projectedAdditional = avgPerDay * daysRemaining;
+        predicted = parseFloat(current_balance) - projectedAdditional;
+        console.warn(`[aiService.predictBalance] AI prediction out of range (${aiResult.prediksi_saldo_akhir}), using fallback: ${predicted}`);
+      }
+
+      const ratio = parseFloat(current_balance) > 0
+        ? predicted / parseFloat(current_balance)
+        : predicted >= 0 ? 1 : 0;
 
       let status;
       if (ratio >= 0.5)      status = 'aman';
@@ -384,35 +409,49 @@ const getFinancialScore = async (user_id = 1) => {
 
   if (txns.length === 0) {
     return {
-      score: 50,
+      score: 75,
       level: 'Belum Ada Data',
       breakdown: {
-        saving_ratio: 50,
-        spending_consistency: 50,
-        category_diversity: 50,
+        saving_ratio: 100,
+        spending_consistency: 100,
+        category_diversity: 0,
         bill_payment: 50,
       },
     };
   }
 
-  const total = txns.reduce((s, t) => s + parseFloat(t.amount), 0);
+  // Pisahkan income vs expense untuk financial score
+  let totalExpense = 0;
+  let totalIncome = 0;
+  for (const t of txns) {
+    const amount = parseFloat(t.amount);
+    if (t.transaction_type === 'income') {
+      totalIncome += amount;
+    } else {
+      totalExpense += amount;
+    }
+  }
   
-  // ── Saving Ratio (Dihitung berdasarkan income riil user) ──
+  // ── Saving Ratio (Dihitung berdasarkan income riil) ──
   const user = await User.findByPk(user_id);
-  const income = user ? parseFloat(user.monthly_income) : 5000000;
-  const savingRatio = Math.max(0, Math.min(100, ((income - total) / income) * 100));
+  const income = totalIncome > 0 ? totalIncome : (user ? parseFloat(user.monthly_income) : 5000000);
+  const savingRatio = income > 0 ? Math.max(0, Math.min(100, ((income - totalExpense) / income) * 100)) : 50;
 
   // ── Spending Consistency (variasi harian) ──
   const dailyMap = {};
   for (const t of txns) {
+    if (t.transaction_type === 'income') continue; // Hanya expense
     dailyMap[t.date] = (dailyMap[t.date] || 0) + parseFloat(t.amount);
   }
   const dailyAmounts = Object.values(dailyMap);
-  const avgDaily = dailyAmounts.reduce((a, b) => a + b, 0) / dailyAmounts.length;
-  const variance = dailyAmounts.reduce((sum, d) => sum + Math.pow(d - avgDaily, 2), 0) / dailyAmounts.length;
-  const stdDev = Math.sqrt(variance);
-  const cv = avgDaily > 0 ? stdDev / avgDaily : 0; // Coefficient of variation
-  const spendingConsistency = Math.max(0, Math.min(100, 100 - cv * 50));
+  let spendingConsistency = 100;
+  if (dailyAmounts.length > 0) {
+    const avgDaily = dailyAmounts.reduce((a, b) => a + b, 0) / dailyAmounts.length;
+    const variance = dailyAmounts.reduce((sum, d) => sum + Math.pow(d - avgDaily, 2), 0) / dailyAmounts.length;
+    const stdDev = Math.sqrt(variance);
+    const cv = avgDaily > 0 ? stdDev / avgDaily : 0;
+    spendingConsistency = Math.max(0, Math.min(100, 100 - cv * 50));
+  }
 
   // ── Category Diversity ──
   const categories = new Set(txns.map((t) => t.category));

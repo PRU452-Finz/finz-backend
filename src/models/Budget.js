@@ -53,8 +53,4 @@ const Budget = sequelize.define(
   }
 );
 
-// Define associations
-User.hasMany(Budget, { foreignKey: 'user_id', as: 'budgets' });
-Budget.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
-
 module.exports = Budget;
