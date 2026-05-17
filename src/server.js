@@ -35,7 +35,7 @@ async function startServer() {
       console.log('');
     });
   } catch (err) {
-    console.error('❌  Gagal menjalankan server:', err.message);
+    console.error('❌  Gagal menjalankan server:', err);
     process.exit(1);
   }
 }

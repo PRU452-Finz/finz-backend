@@ -12,14 +12,36 @@ require('dotenv').config();
 const express    = require('express');
 const cors       = require('cors');
 const path       = require('path');
+const rateLimit  = require('express-rate-limit');
 
 const requestLogger    = require('./middlewares/requestLogger');
 const errorHandler     = require('./middlewares/errorHandler');
 const transactionRoutes = require('./routes/transactionRoutes');
 const dashboardRoutes   = require('./routes/dashboardRoutes');
 const aiRoutes          = require('./routes/aiRoutes');
+const userRoutes        = require('./routes/userRoutes');
+const authRoutes        = require('./routes/authRoutes');
 
 const app = express();
+
+// ─────────────────────────────────────────────────────────────
+// Rate Limiting
+// ─────────────────────────────────────────────────────────────
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 menit
+  max: 10,                   // Maks 10 percobaan login/register per 15 menit
+  message: { success: false, message: 'Terlalu banyak percobaan. Coba lagi dalam 15 menit.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  message: { success: false, message: 'Rate limit tercapai. Coba lagi nanti.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // ─────────────────────────────────────────────────────────────
 // CORS — izinkan request dari frontend FinZ
@@ -57,13 +79,20 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     status: 'running',
     timestamp: new Date().toISOString(),
+    ai_api_url: process.env.AI_API_URL || 'http://localhost:5000',
     endpoints: {
-      transactions:    '/api/transactions',
-      dashboard:       '/api/dashboard',
-      predictBalance:  '/api/predict/balance',
-      predictCategory: '/api/predict/category',
-      recommendation:  '/api/recommendation/:user_id',
-      financialScore:  '/api/financial-score/:user_id',
+      auth:                  '/api/auth/register | /api/auth/login',
+      transactions:          '/api/transactions',
+      dashboard:             '/api/dashboard',
+      predictBalance:        '/api/predict/balance',
+      predictCategory:       '/api/predict/category',
+      recommendation:        '/api/recommendation/:user_id',
+      financialScore:        '/api/financial-score/:user_id',
+      aiHealth:              '/api/ai/health',
+      budgetAlertGenerate:   '/api/budget-alert/generate',
+      budgetAlertGet:        '/api/budget-alert/:user_id/:bulan',
+      budgetAlertRead:       '/api/budget-alert/:user_id/:bulan/read',
+      budgetAlertHistory:    '/api/budget-alert/:user_id/history',
     },
   });
 });
@@ -71,9 +100,11 @@ app.get('/', (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // API Routes
 // ─────────────────────────────────────────────────────────────
-app.use('/api/transactions', transactionRoutes);
-app.use('/api/dashboard',    dashboardRoutes);
-app.use('/api',              aiRoutes);   // /api/predict/*, /api/recommendation/*, /api/financial-score/*
+app.use('/api/auth',         authLimiter, authRoutes);   // Rate limited ketat
+app.use('/api/transactions', apiLimiter,  transactionRoutes);
+app.use('/api/dashboard',    apiLimiter,  dashboardRoutes);
+app.use('/api/users',        apiLimiter,  userRoutes);
+app.use('/api',              apiLimiter,  aiRoutes);
 
 // ─────────────────────────────────────────────────────────────
 // 404 Handler

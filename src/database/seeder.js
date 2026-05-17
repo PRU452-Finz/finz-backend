@@ -13,9 +13,12 @@ require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env'
 
 const sequelize   = require('../config/database');
 const Transaction = require('../models/Transaction');
+const User        = require('../models/User');
+const Budget      = require('../models/Budget');
 
 const seedData = [
   // ── April 2026 ────────────────────────────────────────────
+  { user_id: 1, amount: 10000000, category: 'pemasukan', date: '2026-04-01', payment_method: 'transfer', description: 'Gaji Bulanan', transaction_type: 'income' },
   { user_id: 1, amount: 35000,  category: 'makanan',    date: '2026-04-01', payment_method: 'ewallet',  description: 'Makan siang nasi padang' },
   { user_id: 1, amount: 15000,  category: 'transport',  date: '2026-04-01', payment_method: 'ewallet',  description: 'Gojek ke kampus' },
   { user_id: 1, amount: 120000, category: 'belanja',    date: '2026-04-02', payment_method: 'debit',    description: 'Beli baju di Uniqlo' },
@@ -58,15 +61,54 @@ async function runSeeder() {
     console.log('🌱  Syncing models...');
     await sequelize.sync({ alter: true });
 
-    console.log('🌱  Clearing existing transactions...');
-    await Transaction.destroy({ where: {}, truncate: true });
+    console.log('🌱  Clearing existing data...');
+    // Drop in order of dependencies if truncate fails due to FK
+    await Transaction.destroy({ where: {}, truncate: false });
+    await Budget.destroy({ where: {}, truncate: false });
+    await User.destroy({ where: {}, truncate: false });
+
+    console.log('🌱  Creating demo users...');
+    await User.create({
+      id: 1,
+      name: 'Bayu',
+      email: 'bayu@finz.id',
+      password: 'finz1234', // Akan di-hash otomatis oleh bcrypt hook
+      monthly_income: 5000000,
+      age: 21,
+      occupation: 'mahasiswa',
+      financial_goal: 'hemat',
+      risk_profile: 'moderat',
+    });
+    await User.create({
+      id: 2,
+      name: 'Masbay',
+      email: 'masbay@example.com',
+      password: 'finz1234',
+      monthly_income: 3500000,
+      age: 22,
+      occupation: 'mahasiswa',
+      financial_goal: 'dana_darurat',
+      risk_profile: 'konservatif',
+    });
+
+    console.log('🌱  Creating default budgets...');
+    await Budget.create({ user_id: 1, category: 'makanan', limit_amount: 1500000, month: '2026-04' });
+    await Budget.create({ user_id: 1, category: 'transport', limit_amount: 500000, month: '2026-04' });
+    await Budget.create({ user_id: 1, category: 'belanja', limit_amount: 1000000, month: '2026-04' });
 
     console.log(`🌱  Inserting ${seedData.length} transactions...`);
 
+    const now = new Date();
+    const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
     for (const row of seedData) {
+      // Ganti 2026-04 dengan bulan berjalan agar muncul di dashboard
+      const mappedDate = row.date.replace('2026-04', currentYearMonth);
+      
       await Transaction.create({
         ...row,
-        created_at: new Date(`${row.date}T08:00:00`),
+        date: mappedDate,
+        created_at: new Date(`${mappedDate}T08:00:00`),
       });
     }
 

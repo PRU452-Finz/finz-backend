@@ -33,22 +33,31 @@ const getDashboardSummary = async (user_id = 1) => {
     order: [['date', 'ASC']],
   });
 
-  // ─── 2. Total pengeluaran ────────────────────────────────────
-  const totalSpending = thisMonthTxns.reduce(
-    (sum, t) => sum + parseFloat(t.amount),
-    0
-  );
+  // ─── 2. Total pengeluaran & pemasukan ─────────────────────────
+  let totalSpending = 0;
+  let totalIncome = 0;
 
-  // ─── 3. Group by kategori ────────────────────────────────────
+  for (const t of thisMonthTxns) {
+    const amount = parseFloat(t.amount);
+    if (t.transaction_type === 'income') {
+      totalIncome += amount;
+    } else {
+      totalSpending += amount;
+    }
+  }
+
+  // ─── 3. Group by kategori (Hanya Pengeluaran) ─────────────────
   const categoryBreakdown = {};
   for (const t of thisMonthTxns) {
+    if (t.transaction_type === 'income') continue;
     const cat = t.category;
     categoryBreakdown[cat] = (categoryBreakdown[cat] || 0) + parseFloat(t.amount);
   }
 
-  // ─── 4. Daily breakdown ──────────────────────────────────────
+  // ─── 4. Daily breakdown (Hanya Pengeluaran) ───────────────────
   const dailyBreakdown = {};
   for (const t of thisMonthTxns) {
+    if (t.transaction_type === 'income') continue;
     const key = t.date;
     dailyBreakdown[key] = (dailyBreakdown[key] || 0) + parseFloat(t.amount);
   }
@@ -67,6 +76,7 @@ const getDashboardSummary = async (user_id = 1) => {
 
   const monthlyBreakdown = {};
   for (const t of allRecentTxns) {
+    if (t.transaction_type === 'income') continue; // Hanya pengeluaran untuk bar chart
     const d = new Date(t.date);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     monthlyBreakdown[key] = (monthlyBreakdown[key] || 0) + parseFloat(t.amount);
@@ -78,6 +88,7 @@ const getDashboardSummary = async (user_id = 1) => {
 
   return {
     total_spending: totalSpending,
+    total_income: totalIncome,
     transaction_count: thisMonthTxns.length,
     avg_daily: avgDaily,
     category_breakdown: categoryBreakdown,

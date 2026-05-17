@@ -24,6 +24,7 @@ const formatTransaction = (t) => ({
   category: t.category,
   description: t.description,
   payment_method: t.payment_method,
+  transaction_type: t.transaction_type,
   date: t.date,
   created_at: t.created_at,
 });
@@ -73,6 +74,7 @@ const createTransaction = async (data) => {
     category: data.category,
     description: data.description || '',
     payment_method: data.payment_method || 'cash',
+    transaction_type: data.transaction_type || 'expense',
     date: data.date || new Date().toISOString().slice(0, 10),
     created_at: new Date(),
   });
@@ -88,11 +90,12 @@ const updateTransaction = async (id, data) => {
   if (!t) return null;
 
   await t.update({
-    amount:         data.amount ?? data.nominal ?? t.amount,
-    category:       data.category       ?? t.category,
-    description:    data.description    ?? t.description,
-    payment_method: data.payment_method ?? t.payment_method,
-    date:           data.date           ?? t.date,
+    amount:           data.amount ?? data.nominal ?? t.amount,
+    category:         data.category         ?? t.category,
+    description:      data.description      ?? t.description,
+    payment_method:   data.payment_method   ?? t.payment_method,
+    transaction_type: data.transaction_type  ?? t.transaction_type,
+    date:             data.date             ?? t.date,
   });
 
   return formatTransaction(t);

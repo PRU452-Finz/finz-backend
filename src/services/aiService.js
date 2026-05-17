@@ -1,23 +1,30 @@
 'use strict';
 
 /**
- * AI Service (Mock)
+ * AI Service
  *
- * Simulasi layanan AI secara rule-based.
- * Kelak dapat diganti dengan panggilan ke external AI API.
+ * Menghubungkan backend FinZ ke Flask AI API untuk inferensi ML.
+ * Setiap fungsi menyediakan fallback ke logika mock jika AI API tidak tersedia.
  *
- * ⚠️  Semua fungsi di sini adalah MOCK — tidak ada model ML sungguhan.
+ * Endpoint yang digunakan:
+ *   - predictCategory  → Flask /predict/kategori (TF-IDF + MLP)
+ *   - predictBalance   → Flask /predict/saldo   (DNN Regressor)
+ *   - generateBudgetAlerts → Flask /alerts/generate (Rule Matrix Engine)
  */
 
 const { Op } = require('sequelize');
 const Transaction = require('../models/Transaction');
+const User = require('../models/User');
+const aiClient = require('./aiClient');
 
 // ─────────────────────────────────────────────────────────────
 // 1.  Prediksi Saldo Akhir Bulan
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Estimasi saldo di akhir bulan berdasarkan rata-rata pengeluaran harian.
+ * Estimasi saldo di akhir bulan.
+ * Prioritas: panggil AI API. Fallback: rata-rata harian (mock).
+ *
  * @param {object} params  { current_balance, user_id }
  */
 const predictBalance = async ({ current_balance, user_id = 1 }) => {
@@ -30,7 +37,7 @@ const predictBalance = async ({ current_balance, user_id = 1 }) => {
   const daysPassed = now.getDate();
   const daysRemaining = daysInMonth - daysPassed;
 
-  // Total pengeluaran bulan berjalan sampai hari ini
+  // Ambil transaksi bulan ini dari DB
   const rows = await Transaction.findAll({
     where: {
       user_id,
@@ -40,10 +47,74 @@ const predictBalance = async ({ current_balance, user_id = 1 }) => {
 
   const spentSoFar = rows.reduce((sum, t) => sum + parseFloat(t.amount), 0);
   const avgPerDay = daysPassed > 0 ? spentSoFar / daysPassed : 0;
+
+  // ── Coba panggil AI API ────────────────────────────────────
+  try {
+    const aiAvailable = await aiClient.isAvailable();
+
+    if (aiAvailable) {
+      // Hitung breakdown per kategori (dalam format AI)
+      const categoryTotals = {};
+      for (const t of rows) {
+        const aiCat = aiClient.BACKEND_TO_AI_CATEGORY[t.category] || 'Keluarga & Sosial';
+        categoryTotals[aiCat] = (categoryTotals[aiCat] || 0) + parseFloat(t.amount);
+      }
+
+      const saldoPayload = {
+        total_pengeluaran: spentSoFar,
+        total_income: parseFloat(current_balance), // saldo awal sebagai proxy income
+        n_transaksi: rows.length,
+        avg_pengeluaran: rows.length > 0 ? spentSoFar / rows.length : 0,
+        saldo_awal: parseFloat(current_balance),
+        // Kategori AI — isi 0 jika tidak ada
+        'Tagihan':              categoryTotals['Tagihan'] || 0,
+        'Makan & Minum':        categoryTotals['Makan & Minum'] || 0,
+        'Transportasi':         categoryTotals['Transportasi'] || 0,
+        'Hiburan':              categoryTotals['Hiburan'] || 0,
+        'Belanja Online':       categoryTotals['Belanja Online'] || 0,
+        'Pendidikan':           categoryTotals['Pendidikan'] || 0,
+        'Kesehatan':            categoryTotals['Kesehatan'] || 0,
+        'Perawatan Diri':       categoryTotals['Perawatan Diri'] || 0,
+        'Investasi & Tabungan': categoryTotals['Investasi & Tabungan'] || 0,
+        'Keluarga & Sosial':    categoryTotals['Keluarga & Sosial'] || 0,
+      };
+
+      const aiResult = await aiClient.predictSaldo(saldoPayload);
+
+      const predicted = aiResult.prediksi_saldo_akhir;
+      const ratio = predicted / parseFloat(current_balance);
+
+      let status;
+      if (ratio >= 0.5)      status = 'aman';
+      else if (ratio >= 0.2) status = 'warning';
+      else                   status = 'bahaya';
+
+      const messages = {
+        aman:    'Pengeluaranmu terkontrol dengan baik. Pertahankan pola ini!',
+        warning: 'Pengeluaranmu cukup tinggi bulan ini. Kurangi belanja hiburan untuk menjaga saldo.',
+        bahaya:  'Peringatan! Saldo kamu berisiko habis sebelum akhir bulan. Segera kurangi pengeluaran.',
+      };
+
+      return {
+        current_balance: parseFloat(current_balance),
+        spent_so_far: spentSoFar,
+        avg_per_day: avgPerDay,
+        days_remaining: daysRemaining,
+        predicted_balance: Math.round(predicted),
+        status,
+        message: messages[status],
+        ai_powered: true,
+        cached: aiResult.cached || false,
+      };
+    }
+  } catch (err) {
+    console.warn('[aiService.predictBalance] AI API fallback:', err.message);
+  }
+
+  // ── Fallback: Mock calculation ──────────────────────────────
   const projectedAdditional = avgPerDay * daysRemaining;
   const predicted_balance = Math.max(0, current_balance - projectedAdditional);
 
-  // Tentukan status berdasarkan ratio
   const ratio = predicted_balance / current_balance;
   let status;
   if (ratio >= 0.5)      status = 'aman';
@@ -64,13 +135,52 @@ const predictBalance = async ({ current_balance, user_id = 1 }) => {
     predicted_balance: Math.round(predicted_balance),
     status,
     message: messages[status],
+    ai_powered: false,
   };
 };
 
 // ─────────────────────────────────────────────────────────────
-// 2.  Klasifikasi Kategori via Rule-Based
+// 2.  Klasifikasi Kategori Transaksi
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * Klasifikasi kategori dari deskripsi teks.
+ * Prioritas: AI API (TF-IDF + MLP). Fallback: rule-based keyword matching.
+ *
+ * @param {string} description
+ * @returns {Promise<{ category: string, confidence: number|string, ai_powered: boolean }>}
+ */
+const predictCategory = async (description) => {
+  if (!description) return { category: 'lainnya', confidence: 0, ai_powered: false };
+
+  // ── Coba panggil AI API ────────────────────────────────────
+  try {
+    const aiAvailable = await aiClient.isAvailable();
+
+    if (aiAvailable) {
+      const aiResult = await aiClient.predictKategori(description);
+
+      // AI returns: { deskripsi, kategori, confidence, latency_ms }
+      const aiCategory = aiResult.kategori;
+      const backendCategory = aiClient.mapAiCategory(aiCategory);
+
+      return {
+        category: backendCategory,
+        confidence: aiResult.confidence,
+        ai_category: aiCategory,
+        ai_powered: true,
+        latency_ms: aiResult.latency_ms,
+      };
+    }
+  } catch (err) {
+    console.warn('[aiService.predictCategory] AI API fallback:', err.message);
+  }
+
+  // ── Fallback: Rule-based keyword matching ───────────────────
+  return predictCategoryFallback(description);
+};
+
+// ── Rule-based fallback (original mock logic) ─────────────────
 const CATEGORY_RULES = [
   {
     category: 'makanan',
@@ -115,14 +225,7 @@ const CATEGORY_RULES = [
   },
 ];
 
-/**
- * Klasifikasi kategori dari deskripsi teks
- * @param {string} description
- * @returns {{ category: string, confidence: string }}
- */
-const predictCategory = (description) => {
-  if (!description) return { category: 'lainnya', confidence: 'low' };
-
+const predictCategoryFallback = (description) => {
   const desc = description.toLowerCase().trim();
 
   for (const rule of CATEGORY_RULES) {
@@ -132,11 +235,12 @@ const predictCategory = (description) => {
         category: rule.category,
         confidence: 'high',
         matched_keywords: rule.keywords.filter((kw) => desc.includes(kw)),
+        ai_powered: false,
       };
     }
   }
 
-  return { category: 'lainnya', confidence: 'low', matched_keywords: [] };
+  return { category: 'lainnya', confidence: 'low', matched_keywords: [], ai_powered: false };
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -292,10 +396,11 @@ const getFinancialScore = async (user_id = 1) => {
   }
 
   const total = txns.reduce((s, t) => s + parseFloat(t.amount), 0);
-
-  // ── Saving Ratio (simulasi: asumsi pemasukan standar Rp5jt/bulan) ──
-  const ASSUMED_INCOME = 5_000_000;
-  const savingRatio = Math.max(0, Math.min(100, ((ASSUMED_INCOME - total) / ASSUMED_INCOME) * 100));
+  
+  // ── Saving Ratio (Dihitung berdasarkan income riil user) ──
+  const user = await User.findByPk(user_id);
+  const income = user ? parseFloat(user.monthly_income) : 5000000;
+  const savingRatio = Math.max(0, Math.min(100, ((income - total) / income) * 100));
 
   // ── Spending Consistency (variasi harian) ──
   const dailyMap = {};
@@ -344,9 +449,85 @@ const getFinancialScore = async (user_id = 1) => {
   };
 };
 
+// ─────────────────────────────────────────────────────────────
+// 5.  Budget Alert (NEW — proxy ke AI API)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Generate budget alerts via AI Rule Matrix Engine
+ * @param {object} params
+ */
+const generateBudgetAlerts = async (params) => {
+  const {
+    user_id,
+    bulan,
+    total_income,
+    total_pengeluaran,
+    saldo_awal,
+    prediksi_saldo_akhir,
+    pengeluaran_per_kategori,
+    budgets,
+  } = params;
+
+  // Jika prediksi_saldo_akhir belum tersedia, coba predict dulu
+  let saldoPrediksi = prediksi_saldo_akhir;
+  if (!saldoPrediksi && saldo_awal) {
+    try {
+      const saldoResult = await aiClient.predictSaldo({
+        total_pengeluaran: total_pengeluaran || 0,
+        total_income: total_income || 0,
+        n_transaksi: 0,
+        avg_pengeluaran: 0,
+        saldo_awal: saldo_awal,
+      });
+      saldoPrediksi = saldoResult.prediksi_saldo_akhir;
+    } catch {
+      saldoPrediksi = saldo_awal - (total_pengeluaran || 0);
+    }
+  }
+
+  const payload = {
+    user_id: String(user_id),
+    bulan: bulan || new Date().toISOString().slice(0, 7),
+    total_income: total_income || 0,
+    total_pengeluaran: total_pengeluaran || 0,
+    saldo_awal: saldo_awal || 0,
+    prediksi_saldo_akhir: saldoPrediksi || 0,
+    pengeluaran_per_kategori: pengeluaran_per_kategori || {},
+    budgets: budgets || undefined,
+  };
+
+  return await aiClient.generateAlerts(payload);
+};
+
+/**
+ * Ambil budget alerts per user per bulan
+ */
+const getBudgetAlerts = async (userId, bulan) => {
+  return await aiClient.getAlerts(String(userId), bulan);
+};
+
+/**
+ * Tandai alert sebagai dibaca
+ */
+const markAlertRead = async (userId, bulan, alertId = null) => {
+  return await aiClient.markAlertsRead(String(userId), bulan, alertId);
+};
+
+/**
+ * Riwayat alert semua bulan
+ */
+const getAlertHistory = async (userId) => {
+  return await aiClient.getAlertHistory(String(userId));
+};
+
 module.exports = {
   predictBalance,
   predictCategory,
   getRecommendations,
   getFinancialScore,
+  generateBudgetAlerts,
+  getBudgetAlerts,
+  markAlertRead,
+  getAlertHistory,
 };

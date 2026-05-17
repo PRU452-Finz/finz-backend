@@ -36,7 +36,7 @@ const handleValidationErrors = (req, res) => {
 const index = async (req, res) => {
   try {
     const { category, date_from, date_to } = req.query;
-    const user_id = parseInt(req.query.user_id) || 1;
+    const user_id = req.user.id;
 
     const transactions = await transactionService.getAllTransactions({
       user_id,
@@ -82,7 +82,10 @@ const store = async (req, res) => {
   if (validErr) return;
 
   try {
-    const transaction = await transactionService.createTransaction(req.body);
+    const transaction = await transactionService.createTransaction({
+      ...req.body,
+      user_id: req.user.id,
+    });
 
     return res.status(201).json({
       success: true,

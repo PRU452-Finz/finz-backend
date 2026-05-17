@@ -14,7 +14,8 @@ const { body } = require('express-validator');
 
 const VALID_CATEGORIES = [
   'makanan', 'transport', 'hiburan', 'belanja',
-  'tagihan', 'pendidikan', 'kesehatan', 'lainnya',
+  'tagihan', 'pendidikan', 'kesehatan', 'pemasukan',
+  'gaji', 'bonus', 'investasi', 'lainnya',
 ];
 
 const VALID_PAYMENT_METHODS = [
@@ -122,9 +123,40 @@ const predictCategoryRules = [
     .withMessage('description harus berupa string'),
 ];
 
+// ─────────────────────────────────────────────────────────────
+// Budget Alert Validators
+// ─────────────────────────────────────────────────────────────
+
+const generateBudgetAlertRules = [
+  body('user_id')
+    .notEmpty()
+    .withMessage('user_id wajib diisi'),
+
+  body('total_income')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('total_income harus berupa angka non-negatif'),
+
+  body('total_pengeluaran')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('total_pengeluaran harus berupa angka non-negatif'),
+
+  body('saldo_awal')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('saldo_awal harus berupa angka non-negatif'),
+
+  body('pengeluaran_per_kategori')
+    .optional()
+    .isObject()
+    .withMessage('pengeluaran_per_kategori harus berupa object'),
+];
+
 module.exports = {
   createTransactionRules,
   updateTransactionRules,
   predictBalanceRules,
   predictCategoryRules,
+  generateBudgetAlertRules,
 };
