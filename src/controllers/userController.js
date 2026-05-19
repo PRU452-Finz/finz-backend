@@ -2,6 +2,8 @@
 
 const User = require('../models/User');
 const Budget = require('../models/Budget');
+const Transaction = require('../models/Transaction');
+const { Op, fn, col } = require('sequelize');
 
 // ─────────────────────────────────────────────────────────────
 // GET /api/users/:id
@@ -75,16 +77,55 @@ const getUserBudgets = async (req, res) => {
     const { id } = req.params;
     const { month } = req.query; // Optional filter by month 'YYYY-MM'
 
-    const where = { user_id: id };
-    if (month) {
-      where.month = month;
-    }
+    const now = new Date();
+    const targetMonth = month || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    
+    // 1. Ambil budgets
+    const budgets = await Budget.findAll({ 
+      where: { 
+        user_id: id,
+        month: targetMonth
+      } 
+    });
 
-    const budgets = await Budget.findAll({ where });
+    // 2. Hitung pengeluaran per kategori untuk bulan tersebut
+    const firstDay = `${targetMonth}-01`;
+    const lastDay = new Date(
+      parseInt(targetMonth.split('-')[0]), 
+      parseInt(targetMonth.split('-')[1]), 
+      0
+    ).toISOString().slice(0, 10);
+
+    const spendingRows = await Transaction.findAll({
+      attributes: [
+        'category',
+        [fn('SUM', col('amount')), 'total_spent'],
+      ],
+      where: {
+        user_id: id,
+        transaction_type: 'expense',
+        date: { [Op.between]: [firstDay, lastDay] },
+      },
+      group: ['category'],
+      raw: true,
+    });
+
+    // Buat mapping spending
+    const spendingMap = {};
+    spendingRows.forEach(row => {
+      spendingMap[row.category] = parseFloat(row.total_spent);
+    });
+
+    // 3. Gabungkan data budget dengan nominal spending
+    const data = budgets.map(b => {
+      const budgetObj = b.toJSON();
+      budgetObj.spent = spendingMap[b.category] || 0;
+      return budgetObj;
+    });
 
     return res.status(200).json({
       success: true,
-      data: budgets,
+      data: data,
     });
   } catch (err) {
     console.error('[UserController.getUserBudgets]', err);

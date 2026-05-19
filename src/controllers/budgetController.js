@@ -20,14 +20,14 @@ const index = async (req, res) => {
     // Determine target month
     const now = new Date();
     const monthParam = req.query.month; // format: YYYY-MM
-    let monthDate;
+    let monthDate; // format: YYYY-MM
 
     if (monthParam && /^\d{4}-\d{2}$/.test(monthParam)) {
-      monthDate = `${monthParam}-01`;
+      monthDate = monthParam;
     } else {
       const y = now.getFullYear();
       const m = String(now.getMonth() + 1).padStart(2, '0');
-      monthDate = `${y}-${m}-01`;
+      monthDate = `${y}-${m}`;
     }
 
     const budgets = await Budget.findAll({
@@ -45,7 +45,7 @@ const index = async (req, res) => {
         month: b.month,
         created_at: b.created_at,
       })),
-      period: monthDate.slice(0, 7), // YYYY-MM
+      period: monthDate, // YYYY-MM
     });
   } catch (err) {
     console.error('[BudgetController.index]', err);
@@ -72,14 +72,14 @@ const createOrUpdate = async (req, res) => {
     // Determine month
     let monthDate;
     if (month && /^\d{4}-\d{2}$/.test(month)) {
-      monthDate = `${month}-01`;
-    } else if (month && /^\d{4}-\d{2}-\d{2}$/.test(month)) {
       monthDate = month;
+    } else if (month && /^\d{4}-\d{2}-\d{2}$/.test(month)) {
+      monthDate = month.slice(0, 7);
     } else {
       const now = new Date();
       const y = now.getFullYear();
       const m = String(now.getMonth() + 1).padStart(2, '0');
-      monthDate = `${y}-${m}-01`;
+      monthDate = `${y}-${m}`;
     }
 
     // Try to find existing budget

@@ -19,8 +19,9 @@ async function startServer() {
     await sequelize.authenticate();
     console.log('✅  Database connected successfully');
 
-    // ─── 2. Sync model ke tabel (alter aman saat development) ──
-    await sequelize.sync({ alter: process.env.NODE_ENV === 'development' });
+    // ─── 2. Sync model ke tabel ──────────────────────────────
+    // Gunakan { alter: false } atau sync() biasa untuk menghindari error 'Too many keys' di MySQL
+    await sequelize.sync({ alter: false }); 
     console.log('✅  Database synchronized');
 
     // ─── 3. Jalankan server ─────────────────────────────────────

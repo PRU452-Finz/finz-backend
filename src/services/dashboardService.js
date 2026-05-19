@@ -10,6 +10,9 @@
 const { Op, fn, col, literal } = require('sequelize');
 const sequelize = require('../config/database');
 const Transaction = require('../models/Transaction');
+const aiService = require('./aiService');
+const aiClient = require('./aiClient'); // Import aiClient untuk mapping kategori
+const { Budget } = require('../models');
 
 /**
  * Ambil ringkasan dashboard bulan berjalan
@@ -17,12 +20,14 @@ const Transaction = require('../models/Transaction');
  */
 const getDashboardSummary = async (user_id = 1) => {
   const now = new Date();
-  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
-    .toISOString()
-    .slice(0, 10);
+  const currentMonth = now.toISOString().slice(0, 7); // YYYY-MM
+  const firstDay = `${currentMonth}-01`;
   const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0)
     .toISOString()
     .slice(0, 10);
+
+  // ─── 0. Saldo Awal (Mock/Simulasi untuk alert) ─────────────
+  const initialBalance = 2000000; // Contoh
 
   // ─── 1. Semua transaksi bulan ini ───────────────────────────
   const thisMonthTxns = await Transaction.findAll({
@@ -53,6 +58,38 @@ const getDashboardSummary = async (user_id = 1) => {
     const cat = t.category;
     categoryBreakdown[cat] = (categoryBreakdown[cat] || 0) + parseFloat(t.amount);
   }
+
+  // ─── Trigger AI Budget Alerts (Background) ────────────────────
+  (async () => {
+    try {
+      const userBudgets = await Budget.findAll({ where: { user_id, month: currentMonth } });
+      const budgetMap = {};
+      userBudgets.forEach(b => {
+        // Konversi kategori backend ke format yang dimengerti AI (Formal Indonesia) menggunakan aiClient
+        const aiCatName = aiClient.BACKEND_TO_AI_CATEGORY[b.category] || b.category;
+        budgetMap[aiCatName] = parseFloat(b.limit_amount);
+      });
+
+      // Konversi pengeluaran per kategori juga
+      const aiSpendingMap = {};
+      for (const [cat, amt] of Object.entries(categoryBreakdown)) {
+        const aiCatName = aiClient.BACKEND_TO_AI_CATEGORY[cat] || cat;
+        aiSpendingMap[aiCatName] = amt;
+      }
+
+      await aiService.generateBudgetAlerts({
+        user_id,
+        bulan: currentMonth,
+        total_income: totalIncome,
+        total_pengeluaran: totalSpending,
+        saldo_awal: initialBalance,
+        pengeluaran_per_kategori: aiSpendingMap,
+        budgets: budgetMap
+      });
+    } catch (err) {
+      console.warn('[DashboardService] Gagal generate AI alerts:', err.message);
+    }
+  })();
 
   // ─── 4. Daily breakdown (Hanya Pengeluaran) ───────────────────
   const dailyBreakdown = {};

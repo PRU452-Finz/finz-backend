@@ -142,10 +142,12 @@ const generateBudgetAlerts = async (req, res) => {
 
     // Cek apakah AI API yang down
     if (err.code === 'ECONNREFUSED' || err.code === 'ECONNABORTED') {
-      return res.status(503).json({
-        success: false,
+      return res.status(200).json({
+        success: true,
+        data: { alerts: [], has_budget_set: false },
         message: 'AI API tidak tersedia. Pastikan Flask AI API berjalan.',
         ai_api_url: aiClient.AI_BASE_URL,
+        ai_api_down: true
       });
     }
 
@@ -169,9 +171,11 @@ const getBudgetAlerts = async (req, res) => {
     console.error('[AiController.getBudgetAlerts]', err);
 
     if (err.code === 'ECONNREFUSED' || err.code === 'ECONNABORTED') {
-      return res.status(503).json({
-        success: false,
+      return res.status(200).json({
+        success: true,
+        data: { alerts: [], has_budget_set: false },
         message: 'AI API tidak tersedia.',
+        ai_api_down: true
       });
     }
 

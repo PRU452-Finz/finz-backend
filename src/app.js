@@ -19,6 +19,7 @@ const errorHandler     = require('./middlewares/errorHandler');
 const transactionRoutes = require('./routes/transactionRoutes');
 const dashboardRoutes   = require('./routes/dashboardRoutes');
 const aiRoutes          = require('./routes/aiRoutes');
+const budgetAlertRoutes = require('./routes/budgetAlertRoutes'); // Import rute baru
 const userRoutes        = require('./routes/userRoutes');
 const authRoutes        = require('./routes/authRoutes');
 
@@ -103,6 +104,7 @@ app.get('/', (req, res) => {
 app.use('/api/auth',         authLimiter, authRoutes);   // Rate limited ketat
 app.use('/api/transactions', apiLimiter,  transactionRoutes);
 app.use('/api/dashboard',    apiLimiter,  dashboardRoutes);
+app.use('/api/budget-alert', apiLimiter,  budgetAlertRoutes); // Gunakan middleware
 app.use('/api/users',        apiLimiter,  userRoutes);
 app.use('/api',              apiLimiter,  aiRoutes);
 
