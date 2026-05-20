@@ -2,6 +2,12 @@
 	"folders": [
 		{
 			"path": "."
+		},
+		{
+			"path": "../AI-master"
+		},
+		{
+			"path": "../FinZ"
 		}
 	],
 	"settings": {}

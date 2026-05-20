@@ -9,10 +9,7 @@
  * GET  /api/financial-score/:user_id — Financial health score
  * GET  /api/ai/health                — Status koneksi AI API
  *
- * POST /api/budget-alert/generate               — Generate budget alerts (AI)
- * GET  /api/budget-alert/:user_id/:bulan         — Ambil alerts per bulan
- * POST /api/budget-alert/:user_id/:bulan/read    — Tandai alert dibaca
- * GET  /api/budget-alert/:user_id/history        — Riwayat alert
+ * Budget Alert routes → see budgetAlertRoutes.js
  *
  * Semua route (kecuali AI health) di-protect oleh authMiddleware.
  */
@@ -25,7 +22,6 @@ const aiController = require('../controllers/aiController');
 const {
   predictBalanceRules,
   predictCategoryRules,
-  generateBudgetAlertRules,
 } = require('../middlewares/validators');
 
 // ── AI Health Check (public — untuk monitoring) ─────────────
@@ -42,10 +38,7 @@ router.post('/predict/category',   predictCategoryRules,  aiController.predictCa
 router.get('/recommendation/:user_id',  aiController.getRecommendations);
 router.get('/financial-score/:user_id', aiController.getFinancialScore);
 
-// ── Budget Alert (AI-powered) ────────────────────────────────
-router.post('/budget-alert/generate',               generateBudgetAlertRules, aiController.generateBudgetAlerts);
-router.get( '/budget-alert/:user_id/:bulan',         aiController.getBudgetAlerts);
-router.post('/budget-alert/:user_id/:bulan/read',    aiController.markAlertRead);
-router.get( '/budget-alert/:user_id/history',        aiController.getAlertHistory);
+// ── Budget Alert routes are handled by budgetAlertRoutes.js ──
+// See: /api/budget-alert/* in budgetAlertRoutes.js
 
 module.exports = router;

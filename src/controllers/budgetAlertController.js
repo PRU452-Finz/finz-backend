@@ -5,11 +5,13 @@
  *
  * Compares current month spending per category against budget limits.
  * Returns warning/exceeded status for each category.
+ * Also fetches AI-powered alerts, generating them on-the-fly if needed.
  */
 
 const { Op, fn, col } = require('sequelize');
 const { Transaction, Budget } = require('../models');
 const aiService = require('../services/aiService');
+const aiClient = require('../services/aiClient');
 
 // ─────────────────────────────────────────────────────────────
 // GET /api/budget-alert/:user_id
@@ -38,18 +40,78 @@ const getBudgetAlerts = async (req, res) => {
     // ── 1. Ambil AI-powered alerts (Rasio Income, Saldo Prediksi, dll) ──
     let aiAlerts = [];
     try {
-      const aiResp = await aiService.getBudgetAlerts(userId, period);
-      console.log(`[BudgetAlertController] AI Response for user ${userId}:`, JSON.stringify(aiResp));
+      // Cek apakah AI API tersedia
+      const aiAvailable = await aiClient.isAvailable();
       
-      const rules = aiResp?.alerts || aiResp?.triggered_rules || (Array.isArray(aiResp) ? aiResp : []);
-      
-      if (rules.length > 0) {
-        aiAlerts = rules.map(r => ({
-          category: 'AI Insight',
-          message: r.message,
-          status: r.severity === 'danger' ? 'exceeded' : 'warning',
-          is_ai: true
-        }));
+      if (aiAvailable) {
+        // Selalu generate ulang dari data terkini DB (hindari stale cache)
+        console.log(`[BudgetAlertController] Generating fresh alerts for user ${userId}...`);
+
+        // Ambil data transaksi bulan ini
+        const txns = await Transaction.findAll({
+          where: {
+            user_id: userId,
+            transaction_type: 'expense',
+            date: { [Op.between]: [firstDay, lastDay] },
+          },
+        });
+
+        let totalSpending = 0;
+        const categoryBreakdown = {};
+        for (const t of txns) {
+          const amount = parseFloat(t.amount);
+          totalSpending += amount;
+          const aiCatName = aiClient.BACKEND_TO_AI_CATEGORY[t.category] || t.category;
+          categoryBreakdown[aiCatName] = (categoryBreakdown[aiCatName] || 0) + amount;
+        }
+
+        // Ambil total income bulan ini
+        const incomeTxns = await Transaction.findAll({
+          attributes: [[fn('SUM', col('amount')), 'total_income']],
+          where: {
+            user_id: userId,
+            transaction_type: 'income',
+            date: { [Op.between]: [firstDay, lastDay] },
+          },
+          raw: true,
+        });
+        const totalIncome = parseFloat(incomeTxns[0]?.total_income) || 0;
+
+        // Ambil budgets user TERKINI dari DB
+        const userBudgets = await Budget.findAll({ where: { user_id: userId, month: period } });
+        const budgetMap = {};
+        userBudgets.forEach(b => {
+          const aiCatName = aiClient.BACKEND_TO_AI_CATEGORY[b.category] || b.category;
+          budgetMap[aiCatName] = parseFloat(b.limit_amount);
+        });
+
+        const initialBalance = 2000000;
+
+        // Generate alerts via AI (overwrites old cache)
+        await aiService.generateBudgetAlerts({
+          user_id: userId,
+          bulan: period,
+          total_income: totalIncome,
+          total_pengeluaran: totalSpending,
+          saldo_awal: initialBalance,
+          pengeluaran_per_kategori: categoryBreakdown,
+          budgets: budgetMap,
+        });
+
+        // Ambil hasil fresh
+        const aiResp = await aiService.getBudgetAlerts(userId, period);
+        console.log(`[BudgetAlertController] AI Response for user ${userId}:`, JSON.stringify(aiResp));
+        const rules = aiResp?.alerts || aiResp?.triggered_rules || (Array.isArray(aiResp) ? aiResp : []);
+
+        if (rules.length > 0) {
+          aiAlerts = rules.map(r => ({
+            category: 'AI Insight',
+            message: r.message,
+            status: r.severity === 'danger' ? 'exceeded' : 'warning',
+            is_ai: true,
+            is_read: r.is_read || false,
+          }));
+        }
       }
     } catch (err) {
       console.warn('[BudgetAlertController] Gagal ambil AI alerts:', err.message);

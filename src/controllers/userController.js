@@ -182,10 +182,40 @@ const upsertUserBudget = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
+// ─────────────────────────────────────────────────────────────
+// DELETE /api/users/:id/budgets/:budgetId
+// ─────────────────────────────────────────────────────────────
+const deleteUserBudget = async (req, res) => {
+  try {
+    const { id, budgetId } = req.params;
+
+    const budget = await Budget.findOne({
+      where: { id: budgetId, user_id: id },
+    });
+
+    if (!budget) {
+      return res.status(404).json({
+        success: false,
+        message: 'Budget tidak ditemukan.',
+      });
+    }
+
+    await budget.destroy();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Budget berhasil dihapus.',
+    });
+  } catch (err) {
+    console.error('[UserController.deleteUserBudget]', err);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
 
 module.exports = {
   getUserProfile,
   updateUserProfile,
   getUserBudgets,
   upsertUserBudget,
+  deleteUserBudget,
 };

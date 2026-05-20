@@ -24,5 +24,6 @@ router.put('/:id', userController.updateUserProfile);
 // Budget routes
 router.get('/:id/budgets', userController.getUserBudgets);
 router.post('/:id/budgets', userController.upsertUserBudget);
+router.delete('/:id/budgets/:budgetId', userController.deleteUserBudget);
 
 module.exports = router;
