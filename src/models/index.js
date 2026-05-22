@@ -42,6 +42,18 @@ Budget.belongsTo(User, {
   as: 'user',
 });
 
+// User ↔ PredictionLog
+User.hasMany(PredictionLog, {
+  foreignKey: 'user_id',
+  as: 'predictionLogs',
+  onDelete: 'CASCADE',
+  onUpdate: 'CASCADE',
+});
+PredictionLog.belongsTo(User, {
+  foreignKey: 'user_id',
+  as: 'user',
+});
+
 // ═══════════════════════════════════════════════════════════════
 // Export
 // ═══════════════════════════════════════════════════════════════

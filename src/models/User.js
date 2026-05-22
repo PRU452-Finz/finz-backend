@@ -8,9 +8,9 @@ const User = sequelize.define(
   'User',
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
-      autoIncrement: true,
     },
     name: {
       type: DataTypes.STRING,
@@ -31,6 +31,12 @@ const User = sequelize.define(
       allowNull: false,
       defaultValue: 0,
       comment: 'Pemasukan bulanan user (Rp)',
+    },
+    initial_balance: {
+      type: DataTypes.DECIMAL(15, 2),
+      allowNull: false,
+      defaultValue: 0,
+      comment: 'Saldo awal user',
     },
     age: {
       type: DataTypes.INTEGER,

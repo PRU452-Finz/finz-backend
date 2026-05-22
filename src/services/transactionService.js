@@ -9,6 +9,7 @@
 
 const { Op } = require('sequelize');
 const Transaction = require('../models/Transaction');
+const cacheService = require('./cacheService');
 
 // ═══════════ Helpers ═══════════
 
@@ -34,8 +35,18 @@ const formatTransaction = (t) => ({
 /**
  * Ambil semua transaksi dengan filter opsional (kategori & tanggal)
  */
-const getAllTransactions = async ({ user_id = 1, category, date_from, date_to } = {}) => {
+const getAllTransactions = async ({
+  user_id,
+  category,
+  date_from,
+  date_to,
+  page = 1,
+  limit = 20,
+} = {}) => {
   const where = { user_id };
+  const safePage = Math.max(parseInt(page, 10) || 1, 1);
+  const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+  const offset = (safePage - 1) * safeLimit;
 
   if (category && category !== 'all') {
     where.category = category;
@@ -47,12 +58,22 @@ const getAllTransactions = async ({ user_id = 1, category, date_from, date_to } 
     if (date_to)   where.date[Op.lte] = date_to;
   }
 
-  const rows = await Transaction.findAll({
+  const { rows, count } = await Transaction.findAndCountAll({
     where,
     order: [['date', 'DESC'], ['created_at', 'DESC']],
+    limit: safeLimit,
+    offset,
   });
 
-  return rows.map(formatTransaction);
+  return {
+    data: rows.map(formatTransaction),
+    pagination: {
+      page: safePage,
+      limit: safeLimit,
+      total: count,
+      totalPages: Math.ceil(count / safeLimit),
+    },
+  };
 };
 
 /**
@@ -69,7 +90,7 @@ const getTransactionById = async (id) => {
  */
 const createTransaction = async (data) => {
   const t = await Transaction.create({
-    user_id: data.user_id || 1,
+    user_id: data.user_id,
     amount: data.amount ?? data.nominal,
     category: data.category,
     description: data.description || '',
@@ -78,6 +99,8 @@ const createTransaction = async (data) => {
     date: data.date || new Date().toISOString().slice(0, 10),
     created_at: new Date(),
   });
+
+  await cacheService.delPattern(`finz:cache:*:${t.user_id}*`);
 
   return formatTransaction(t);
 };
@@ -88,6 +111,7 @@ const createTransaction = async (data) => {
 const updateTransaction = async (id, data) => {
   const t = await Transaction.findByPk(id);
   if (!t) return null;
+  const userId = t.user_id;
 
   await t.update({
     amount:           data.amount ?? data.nominal ?? t.amount,
@@ -98,6 +122,8 @@ const updateTransaction = async (id, data) => {
     date:             data.date             ?? t.date,
   });
 
+  await cacheService.delPattern(`finz:cache:*:${userId}*`);
+
   return formatTransaction(t);
 };
 
@@ -107,7 +133,9 @@ const updateTransaction = async (id, data) => {
 const deleteTransaction = async (id) => {
   const t = await Transaction.findByPk(id);
   if (!t) return false;
+  const userId = t.user_id;
   await t.destroy();
+  await cacheService.delPattern(`finz:cache:*:${userId}*`);
   return true;
 };
 

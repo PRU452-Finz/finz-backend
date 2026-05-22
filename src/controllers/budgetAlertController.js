@@ -1,5 +1,7 @@
 'use strict';
 
+const logger = require('../config/logger');
+
 /**
  * Budget Alert Controller
  *
@@ -8,7 +10,7 @@
  * Also fetches AI-powered alerts, generating them on-the-fly if needed.
  */
 
-const { Op, fn, col } = require('sequelize');
+const { Op } = require('sequelize');
 const { Transaction, Budget } = require('../models');
 const aiService = require('../services/aiService');
 const aiClient = require('../services/aiClient');
@@ -19,7 +21,7 @@ const aiClient = require('../services/aiClient');
 // ─────────────────────────────────────────────────────────────
 const getBudgetAlerts = async (req, res) => {
   try {
-    const userId = parseInt(req.params.user_id);
+    const userId = req.params.user_id;
     const now = new Date();
     // Mendukung month dari params (sesuai API frontend) atau query
     const monthParam = req.params.month || req.query.month; 
@@ -37,6 +39,42 @@ const getBudgetAlerts = async (req, res) => {
     const firstDay    = `${period}-01`;
     const lastDay     = new Date(year, month, 0).toISOString().slice(0, 10); // last day of month
 
+    const [budgets, expenses, incomeResult] = await Promise.all([
+      Budget.findAll({ where: { user_id: userId, month: period } }),
+      Transaction.findAll({
+        where: {
+          user_id: userId,
+          transaction_type: 'expense',
+          date: { [Op.between]: [firstDay, lastDay] },
+        },
+      }),
+      Transaction.sum('amount', {
+        where: {
+          user_id: userId,
+          transaction_type: 'income',
+          date: { [Op.between]: [firstDay, lastDay] },
+        },
+      }),
+    ]);
+
+    let totalSpending = 0;
+    const categoryBreakdown = {};
+    const spendingMap = {};
+    for (const t of expenses) {
+      const amount = parseFloat(t.amount);
+      totalSpending += amount;
+      spendingMap[t.category] = (spendingMap[t.category] || 0) + amount;
+      const aiCatName = aiClient.BACKEND_TO_AI_CATEGORY[t.category] || t.category;
+      categoryBreakdown[aiCatName] = (categoryBreakdown[aiCatName] || 0) + amount;
+    }
+
+    const totalIncome = parseFloat(incomeResult) || 0;
+    const budgetMap = {};
+    budgets.forEach(b => {
+      const aiCatName = aiClient.BACKEND_TO_AI_CATEGORY[b.category] || b.category;
+      budgetMap[aiCatName] = parseFloat(b.limit_amount);
+    });
+
     // ── 1. Ambil AI-powered alerts (Rasio Income, Saldo Prediksi, dll) ──
     let aiAlerts = [];
     try {
@@ -45,47 +83,8 @@ const getBudgetAlerts = async (req, res) => {
       
       if (aiAvailable) {
         // Selalu generate ulang dari data terkini DB (hindari stale cache)
-        console.log(`[BudgetAlertController] Generating fresh alerts for user ${userId}...`);
-
-        // Ambil data transaksi bulan ini
-        const txns = await Transaction.findAll({
-          where: {
-            user_id: userId,
-            transaction_type: 'expense',
-            date: { [Op.between]: [firstDay, lastDay] },
-          },
-        });
-
-        let totalSpending = 0;
-        const categoryBreakdown = {};
-        for (const t of txns) {
-          const amount = parseFloat(t.amount);
-          totalSpending += amount;
-          const aiCatName = aiClient.BACKEND_TO_AI_CATEGORY[t.category] || t.category;
-          categoryBreakdown[aiCatName] = (categoryBreakdown[aiCatName] || 0) + amount;
-        }
-
-        // Ambil total income bulan ini
-        const incomeTxns = await Transaction.findAll({
-          attributes: [[fn('SUM', col('amount')), 'total_income']],
-          where: {
-            user_id: userId,
-            transaction_type: 'income',
-            date: { [Op.between]: [firstDay, lastDay] },
-          },
-          raw: true,
-        });
-        const totalIncome = parseFloat(incomeTxns[0]?.total_income) || 0;
-
-        // Ambil budgets user TERKINI dari DB
-        const userBudgets = await Budget.findAll({ where: { user_id: userId, month: period } });
-        const budgetMap = {};
-        userBudgets.forEach(b => {
-          const aiCatName = aiClient.BACKEND_TO_AI_CATEGORY[b.category] || b.category;
-          budgetMap[aiCatName] = parseFloat(b.limit_amount);
-        });
-
-        const initialBalance = 2000000;
+        logger.info(`[BudgetAlertController] Generating fresh alerts for user ${userId}...`);
+        const initialBalance = req.user ? parseFloat(req.user.initial_balance) || 0 : 0;
 
         // Generate alerts via AI (overwrites old cache)
         await aiService.generateBudgetAlerts({
@@ -100,7 +99,7 @@ const getBudgetAlerts = async (req, res) => {
 
         // Ambil hasil fresh
         const aiResp = await aiService.getBudgetAlerts(userId, period);
-        console.log(`[BudgetAlertController] AI Response for user ${userId}:`, JSON.stringify(aiResp));
+        logger.info(`[BudgetAlertController] AI Response for user ${userId}:`, JSON.stringify(aiResp));
         const rules = aiResp?.alerts || aiResp?.triggered_rules || (Array.isArray(aiResp) ? aiResp : []);
 
         if (rules.length > 0) {
@@ -114,13 +113,8 @@ const getBudgetAlerts = async (req, res) => {
         }
       }
     } catch (err) {
-      console.warn('[BudgetAlertController] Gagal ambil AI alerts:', err.message);
+      logger.warn('[BudgetAlertController] Gagal ambil AI alerts:', err.message);
     }
-
-    // ── 2. Get budgets for this month (Standard Logic) ─────────
-    const budgets = await Budget.findAll({
-      where: { user_id: userId, month: period },
-    });
 
     if (budgets.length === 0 && aiAlerts.length === 0) {
       return res.status(200).json({
@@ -131,26 +125,6 @@ const getBudgetAlerts = async (req, res) => {
           period,
         },
       });
-    }
-
-    // ── 3. Get spending per category (Standard Logic) ──────────
-    const spendingRows = await Transaction.findAll({
-      attributes: [
-        'category',
-        [fn('SUM', col('amount')), 'total_spent'],
-      ],
-      where: {
-        user_id: userId,
-        transaction_type: 'expense',
-        date: { [Op.between]: [firstDay, lastDay] },
-      },
-      group: ['category'],
-      raw: true,
-    });
-
-    const spendingMap = {};
-    for (const row of spendingRows) {
-      spendingMap[row.category] = parseFloat(row.total_spent);
     }
 
     // ── 4. Compare spending vs budget limits ──────────────────
@@ -204,7 +178,7 @@ const getBudgetAlerts = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('[BudgetAlertController.getBudgetAlerts]', err);
+    logger.error('[BudgetAlertController.getBudgetAlerts]', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };

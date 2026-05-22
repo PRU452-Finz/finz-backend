@@ -8,12 +8,12 @@ const Budget = sequelize.define(
   'Budget',
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
-      autoIncrement: true,
     },
     user_id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.UUID,
       allowNull: false,
       references: {
         model: User,

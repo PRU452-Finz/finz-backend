@@ -1,5 +1,7 @@
 'use strict';
 
+const logger = require('../config/logger');
+
 /**
  * Admin Controller
  *
@@ -79,7 +81,7 @@ const getPredictionStats = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('[AdminController.getPredictionStats]', err);
+    logger.error('[AdminController.getPredictionStats]', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };

@@ -13,13 +13,19 @@ const express    = require('express');
 const cors       = require('cors');
 const path       = require('path');
 const rateLimit  = require('express-rate-limit');
+const helmet     = require('helmet');
+const compression = require('compression');
+const { RedisStore } = require('rate-limit-redis');
 
+const redis            = require('./config/redis');
 const requestLogger    = require('./middlewares/requestLogger');
 const errorHandler     = require('./middlewares/errorHandler');
 const transactionRoutes = require('./routes/transactionRoutes');
 const dashboardRoutes   = require('./routes/dashboardRoutes');
 const aiRoutes          = require('./routes/aiRoutes');
 const budgetAlertRoutes = require('./routes/budgetAlertRoutes'); // Import rute baru
+const budgetRoutes      = require('./routes/budgetRoutes');
+const adminRoutes       = require('./routes/adminRoutes');
 const userRoutes        = require('./routes/userRoutes');
 const authRoutes        = require('./routes/authRoutes');
 
@@ -28,21 +34,36 @@ const app = express();
 // ─────────────────────────────────────────────────────────────
 // Rate Limiting
 // ─────────────────────────────────────────────────────────────
+const createRedisStore = (prefix) => new RedisStore({
+  prefix,
+  sendCommand: (...args) => redis.call(...args),
+});
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 menit
   max: 10,                   // Maks 10 percobaan login/register per 15 menit
+  store: createRedisStore('finz:rl:auth:'),
   message: { success: false, message: 'Terlalu banyak percobaan. Coba lagi dalam 15 menit.' },
   standardHeaders: true,
   legacyHeaders: false,
+  passOnStoreError: true,
 });
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: 500,
+  store: createRedisStore('finz:rl:api:'),
   message: { success: false, message: 'Rate limit tercapai. Coba lagi nanti.' },
   standardHeaders: true,
   legacyHeaders: false,
+  passOnStoreError: true,
 });
+
+// ─────────────────────────────────────────────────────────────
+// Security & Compression
+// ─────────────────────────────────────────────────────────────
+app.use(helmet());
+app.use(compression());
 
 // ─────────────────────────────────────────────────────────────
 // CORS — izinkan request dari frontend FinZ
@@ -63,7 +84,7 @@ app.options('*', cors(corsOptions)); // Preflight
 // ─────────────────────────────────────────────────────────────
 // Body Parser
 // ─────────────────────────────────────────────────────────────
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // ─────────────────────────────────────────────────────────────
@@ -80,7 +101,6 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     status: 'running',
     timestamp: new Date().toISOString(),
-    ai_api_url: process.env.AI_API_URL || 'http://localhost:5000',
     endpoints: {
       auth:                  '/api/auth/register | /api/auth/login',
       transactions:          '/api/transactions',
@@ -105,6 +125,8 @@ app.use('/api/auth',         authLimiter, authRoutes);   // Rate limited ketat
 app.use('/api/transactions', apiLimiter,  transactionRoutes);
 app.use('/api/dashboard',    apiLimiter,  dashboardRoutes);
 app.use('/api/budget-alert', apiLimiter,  budgetAlertRoutes); // Gunakan middleware
+app.use('/api/budgets',      apiLimiter,  budgetRoutes);
+app.use('/api/admin',        apiLimiter,  adminRoutes);
 app.use('/api/users',        apiLimiter,  userRoutes);
 app.use('/api',              apiLimiter,  aiRoutes);
 

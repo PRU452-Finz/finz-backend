@@ -1,5 +1,7 @@
 'use strict';
 
+const logger = require('../config/logger');
+
 /**
  * Dashboard Service
  *
@@ -7,18 +9,23 @@
  * Logika agregasi ada di sini, bukan di controller.
  */
 
-const { Op, fn, col, literal } = require('sequelize');
-const sequelize = require('../config/database');
+const { Op } = require('sequelize');
 const Transaction = require('../models/Transaction');
+const User = require('../models/User');
 const aiService = require('./aiService');
 const aiClient = require('./aiClient'); // Import aiClient untuk mapping kategori
+const cacheService = require('./cacheService');
 const { Budget } = require('../models');
 
 /**
  * Ambil ringkasan dashboard bulan berjalan
- * @param {number} user_id
+ * @param {string} user_id
  */
-const getDashboardSummary = async (user_id = 1) => {
+const getDashboardSummary = async (user_id) => {
+  const cacheKey = cacheService.keys.dashboard(user_id);
+  const cached = await cacheService.get(cacheKey);
+  if (cached) return cached;
+
   const now = new Date();
   const currentMonth = now.toISOString().slice(0, 7); // YYYY-MM
   const firstDay = `${currentMonth}-01`;
@@ -26,8 +33,9 @@ const getDashboardSummary = async (user_id = 1) => {
     .toISOString()
     .slice(0, 10);
 
-  // ─── 0. Saldo Awal (Mock/Simulasi untuk alert) ─────────────
-  const initialBalance = 2000000; // Contoh
+  // ─── 0. Saldo Awal User ────────────────────────────────────
+  const user = await User.findByPk(user_id, { attributes: ['initial_balance'] });
+  const initialBalance = user ? parseFloat(user.initial_balance) || 0 : 0;
 
   // ─── 1. Semua transaksi bulan ini ───────────────────────────
   const thisMonthTxns = await Transaction.findAll({
@@ -87,7 +95,7 @@ const getDashboardSummary = async (user_id = 1) => {
         budgets: budgetMap
       });
     } catch (err) {
-      console.warn('[DashboardService] Gagal generate AI alerts:', err.message);
+      logger.warn('[DashboardService] Gagal generate AI alerts:', err.message);
     }
   })();
 
@@ -123,7 +131,7 @@ const getDashboardSummary = async (user_id = 1) => {
   const uniqueDays = Object.keys(dailyBreakdown).length;
   const avgDaily = uniqueDays > 0 ? totalSpending / uniqueDays : 0;
 
-  return {
+  const result = {
     total_spending: totalSpending,
     total_income: totalIncome,
     transaction_count: thisMonthTxns.length,
@@ -133,6 +141,10 @@ const getDashboardSummary = async (user_id = 1) => {
     monthly_breakdown: monthlyBreakdown,
     period: { from: firstDay, to: lastDay },
   };
+
+  await cacheService.set(cacheKey, result, cacheService.TTL.DASHBOARD);
+
+  return result;
 };
 
 module.exports = { getDashboardSummary };

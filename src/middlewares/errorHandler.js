@@ -1,5 +1,7 @@
 'use strict';
 
+const logger = require('../config/logger');
+
 /**
  * Error Handler Middleware
  *
@@ -26,7 +28,7 @@ const errorHandler = (err, req, res, next) => {
   }
 
   // Default 500
-  console.error('[ErrorHandler]', err);
+  logger.error('[ErrorHandler]', err);
   return res.status(err.status || 500).json({
     success: false,
     message: err.message || 'Internal server error',

@@ -15,9 +15,20 @@ const PredictionLog = sequelize.define(
   'PredictionLog',
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
-      autoIncrement: true,
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
+    },
+    user_id: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: 'users',
+        key: 'id',
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'CASCADE',
+      comment: 'ID pengguna pemilik log prediksi',
     },
     input_text: {
       type: DataTypes.STRING(500),
@@ -65,6 +76,7 @@ const PredictionLog = sequelize.define(
     tableName: 'prediction_logs',
     timestamps: false,
     indexes: [
+      { fields: ['user_id'] },
       { fields: ['predicted_category'] },
       { fields: ['created_at'] },
     ],

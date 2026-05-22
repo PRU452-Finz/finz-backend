@@ -3,11 +3,11 @@
 const router = require('express').Router();
 const budgetAlertController = require('../controllers/budgetAlertController');
 const aiController = require('../controllers/aiController');
-const verifyToken = require('../middlewares/verifyToken');
+const authMiddleware = require('../middlewares/authMiddleware');
 const { generateBudgetAlertRules } = require('../middlewares/validators');
 
 // All routes require auth
-router.use(verifyToken);
+router.use(authMiddleware);
 
 // Budget alert routes — order matters!
 // More specific routes must come before parameterized ones.

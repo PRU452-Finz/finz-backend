@@ -1,5 +1,7 @@
 'use strict';
 
+const logger = require('../config/logger');
+
 /**
  * FinZ Database Seeder
  *
@@ -18,6 +20,7 @@ const sequelize   = require('../config/database');
 const Transaction = require('../models/Transaction');
 const User        = require('../models/User');
 const Budget      = require('../models/Budget');
+const { v4: uuidv4 } = require('uuid');
 
 // ─── Helper: tanggal relatif ke bulan ini ──────────────────
 const now = new Date();
@@ -147,21 +150,21 @@ const bayuBudgets = [
 // ═══════════════════════════════════════════════════════════════
 async function runSeeder() {
   try {
-    console.log('🌱  Connecting to database...');
+    logger.info('🌱  Connecting to database...');
     await sequelize.authenticate();
 
-    console.log('🌱  Syncing models...');
-    await sequelize.sync({ alter: true });
-
-    console.log('🌱  Clearing existing data...');
+    logger.info('🌱  Clearing existing data...');
     await Transaction.destroy({ where: {}, truncate: false });
     await Budget.destroy({ where: {}, truncate: false });
     await User.destroy({ where: {}, truncate: false });
 
     // ── Users ─────────────────────────────────────────────────
-    console.log('🌱  Creating demo users...');
+    logger.info('🌱  Creating demo users...');
+    const bayuId = uuidv4();
+    const masbayId = uuidv4();
+
     const bayu = await User.create({
-      id: 1,
+      id: bayuId,
       name: 'Bayu',
       email: 'bayu@finz.id',
       password: 'finz1234',
@@ -173,7 +176,7 @@ async function runSeeder() {
     });
 
     await User.create({
-      id: 2,
+      id: masbayId,
       name: 'Masbay',
       email: 'masbay@example.com',
       password: 'finz1234',
@@ -185,11 +188,11 @@ async function runSeeder() {
     });
 
     // ── Budgets (bulan ini) ──────────────────────────────────
-    console.log('🌱  Creating budgets...');
+    logger.info('🌱  Creating budgets...');
     const currentMonth = ym(0);
     for (const b of bayuBudgets) {
       await Budget.create({
-        user_id: 1,
+        user_id: bayu.id,
         category: b.category,
         limit_amount: b.limit_amount,
         month: currentMonth,
@@ -197,10 +200,10 @@ async function runSeeder() {
     }
 
     // ── Transactions ────────────────────────────────────────
-    console.log(`🌱  Inserting ${bayuTransactions.length} transactions...`);
+    logger.info(`🌱  Inserting ${bayuTransactions.length} transactions...`);
     for (const row of bayuTransactions) {
       await Transaction.create({
-        user_id: 1,
+        user_id: bayu.id,
         amount: row.amount,
         category: row.category,
         date: row.date,
@@ -216,25 +219,25 @@ async function runSeeder() {
     const income  = thisMonthTxns.filter(t => t.transaction_type === 'income').reduce((s, t) => s + t.amount, 0);
     const expense = thisMonthTxns.filter(t => t.transaction_type !== 'income').reduce((s, t) => s + t.amount, 0);
 
-    console.log('\n╔══════════════════════════════════════════════════╗');
-    console.log('║             FinZ Seeder — Summary                ║');
-    console.log('╠══════════════════════════════════════════════════╣');
-    console.log(`║  Users       : 2 (bayu@finz.id / finz1234)      ║`);
-    console.log(`║  Transactions: ${bayuTransactions.length} total                        ║`);
-    console.log(`║  Budgets     : ${bayuBudgets.length} kategori (bulan ${currentMonth})     ║`);
-    console.log('╠══════════════════════════════════════════════════╣');
-    console.log(`║  Bulan Ini:                                      ║`);
-    console.log(`║    Income  : Rp ${income.toLocaleString('id-ID').padEnd(13)}              ║`);
-    console.log(`║    Expense : Rp ${expense.toLocaleString('id-ID').padEnd(13)}              ║`);
-    console.log(`║    Saldo   : Rp ${(income - expense).toLocaleString('id-ID').padEnd(13)}              ║`);
-    console.log('╚══════════════════════════════════════════════════╝');
+    logger.info('\n╔══════════════════════════════════════════════════╗');
+    logger.info('║             FinZ Seeder — Summary                ║');
+    logger.info('╠══════════════════════════════════════════════════╣');
+    logger.info(`║  Users       : 2 (bayu@finz.id / finz1234)      ║`);
+    logger.info(`║  Transactions: ${bayuTransactions.length} total                        ║`);
+    logger.info(`║  Budgets     : ${bayuBudgets.length} kategori (bulan ${currentMonth})     ║`);
+    logger.info('╠══════════════════════════════════════════════════╣');
+    logger.info(`║  Bulan Ini:                                      ║`);
+    logger.info(`║    Income  : Rp ${income.toLocaleString('id-ID').padEnd(13)}              ║`);
+    logger.info(`║    Expense : Rp ${expense.toLocaleString('id-ID').padEnd(13)}              ║`);
+    logger.info(`║    Saldo   : Rp ${(income - expense).toLocaleString('id-ID').padEnd(13)}              ║`);
+    logger.info('╚══════════════════════════════════════════════════╝');
 
-    console.log('\n✅  Seeder berhasil!');
+    logger.info('\n✅  Seeder berhasil!');
     await sequelize.close();
     process.exit(0);
   } catch (err) {
-    console.error('❌  Seeder gagal:', err.message);
-    console.error(err);
+    logger.error('❌  Seeder gagal:', err.message);
+    logger.error(err);
     process.exit(1);
   }
 }

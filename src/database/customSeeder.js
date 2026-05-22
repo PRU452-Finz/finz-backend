@@ -1,5 +1,7 @@
 'use strict';
 
+const logger = require('../config/logger');
+
 require('dotenv').config(); // Load ENV sebelum memanggil model
 const { User, Transaction, Budget } = require('../models');
 const bcrypt = require('bcryptjs');
@@ -15,7 +17,7 @@ const bcrypt = require('bcryptjs');
 
 async function customSeed() {
   try {
-    console.log('--- Memulai Custom Seeding (Junardi, Ashley, Cindy, Zulhan) ---');
+    logger.info('--- Memulai Custom Seeding (Junardi, Ashley, Cindy, Zulhan) ---');
 
     const emails = ['junardi@finz.id', 'ashley@finz.id', 'cindy@finz.id', 'zulhan@finz.id'];
     
@@ -28,7 +30,7 @@ async function customSeed() {
       await Transaction.destroy({ where: { user_id: existingUserIds } });
       await Budget.destroy({ where: { user_id: existingUserIds } });
       await User.destroy({ where: { id: existingUserIds } });
-      console.log('Data lama untuk profil target telah dibersihkan.');
+      logger.info('Data lama untuk profil target telah dibersihkan.');
     }
 
     const bulanMei = '2026-05';
@@ -142,12 +144,12 @@ async function customSeed() {
       { user_id: zulhan.id, amount: 2500000, category: 'transport', transaction_type: 'expense', date: '2026-05-14', description: 'Servis Mobil' }
     ]);
 
-    console.log('--- Custom Seeding SELESAI ---');
-    console.log('Email login semua: user@finz.id | Password: password123');
+    logger.info('--- Custom Seeding SELESAI ---');
+    logger.info('Email login semua: user@finz.id | Password: password123');
     process.exit(0);
 
   } catch (err) {
-    console.error('FAILED Custom Seeding:', err);
+    logger.error('FAILED Custom Seeding:', err);
     process.exit(1);
   }
 }

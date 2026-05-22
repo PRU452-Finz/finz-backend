@@ -1,5 +1,7 @@
 'use strict';
 
+const logger = require('../config/logger');
+
 /**
  * AI Controller
  *
@@ -13,7 +15,7 @@ const aiClient  = require('../services/aiClient');
 
 // ─────────────────────────────────────────────────────────────
 // POST /api/predict/balance
-// Body: { current_balance: number, user_id?: number }
+// Body: { current_balance: number, user_id?: string }
 // ─────────────────────────────────────────────────────────────
 const predictBalance = async (req, res) => {
   const errors = validationResult(req);
@@ -26,7 +28,8 @@ const predictBalance = async (req, res) => {
   }
 
   try {
-    const { current_balance, user_id = 1 } = req.body;
+    const { current_balance } = req.body;
+    const user_id = req.body.user_id || req.user.id;
     const result = await aiService.predictBalance({ current_balance, user_id });
 
     return res.status(200).json({
@@ -45,7 +48,7 @@ const predictBalance = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('[AiController.predictBalance]', err);
+    logger.error('[AiController.predictBalance]', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
@@ -73,7 +76,7 @@ const predictCategory = async (req, res) => {
       data: result,
     });
   } catch (err) {
-    console.error('[AiController.predictCategory]', err);
+    logger.error('[AiController.predictCategory]', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
@@ -83,7 +86,7 @@ const predictCategory = async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 const getRecommendations = async (req, res) => {
   try {
-    const user_id = parseInt(req.params.user_id, 10) || 1;
+    const user_id = req.params.user_id;
     const recommendations = await aiService.getRecommendations(user_id);
 
     return res.status(200).json({
@@ -92,7 +95,7 @@ const getRecommendations = async (req, res) => {
       data: recommendations,
     });
   } catch (err) {
-    console.error('[AiController.getRecommendations]', err);
+    logger.error('[AiController.getRecommendations]', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
@@ -102,7 +105,7 @@ const getRecommendations = async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 const getFinancialScore = async (req, res) => {
   try {
-    const user_id = parseInt(req.params.user_id, 10) || 1;
+    const user_id = req.params.user_id;
     const result = await aiService.getFinancialScore(user_id);
 
     return res.status(200).json({
@@ -110,7 +113,7 @@ const getFinancialScore = async (req, res) => {
       data: result,
     });
   } catch (err) {
-    console.error('[AiController.getFinancialScore]', err);
+    logger.error('[AiController.getFinancialScore]', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
@@ -138,7 +141,7 @@ const generateBudgetAlerts = async (req, res) => {
       data: result,
     });
   } catch (err) {
-    console.error('[AiController.generateBudgetAlerts]', err);
+    logger.error('[AiController.generateBudgetAlerts]', err);
 
     // Cek apakah AI API yang down
     if (err.code === 'ECONNREFUSED' || err.code === 'ECONNABORTED') {
@@ -168,7 +171,7 @@ const getBudgetAlerts = async (req, res) => {
       data: result,
     });
   } catch (err) {
-    console.error('[AiController.getBudgetAlerts]', err);
+    logger.error('[AiController.getBudgetAlerts]', err);
 
     if (err.code === 'ECONNREFUSED' || err.code === 'ECONNABORTED') {
       return res.status(200).json({
@@ -198,7 +201,7 @@ const markAlertRead = async (req, res) => {
       data: result,
     });
   } catch (err) {
-    console.error('[AiController.markAlertRead]', err);
+    logger.error('[AiController.markAlertRead]', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
@@ -216,7 +219,7 @@ const getAlertHistory = async (req, res) => {
       data: result,
     });
   } catch (err) {
-    console.error('[AiController.getAlertHistory]', err);
+    logger.error('[AiController.getAlertHistory]', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
@@ -249,7 +252,7 @@ const getAiHealth = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('[AiController.getAiHealth]', err);
+    logger.error('[AiController.getAiHealth]', err);
     return res.status(200).json({
       success: true,
       data: {

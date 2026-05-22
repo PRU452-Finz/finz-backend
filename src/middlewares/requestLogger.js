@@ -1,5 +1,7 @@
 'use strict';
 
+const logger = require('../config/logger');
+
 /**
  * Request Logger Middleware
  * Log setiap request masuk ke console — berguna saat development.
@@ -15,7 +17,7 @@ const requestLogger = (req, res, next) => {
       res.statusCode < 400 ? '\x1b[33m' :
       '\x1b[31m';
 
-    console.log(
+    logger.info(
       `${timestamp} ${statusColor}${res.statusCode}\x1b[0m ${req.method} ${req.originalUrl} — ${duration}ms`
     );
   });

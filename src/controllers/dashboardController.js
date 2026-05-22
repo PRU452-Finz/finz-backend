@@ -1,5 +1,7 @@
 'use strict';
 
+const logger = require('../config/logger');
+
 /**
  * Dashboard Controller
  * Handles GET /api/dashboard
@@ -17,7 +19,7 @@ const getDashboard = async (req, res) => {
       data: summary,
     });
   } catch (err) {
-    console.error('[DashboardController.getDashboard]', err);
+    logger.error('[DashboardController.getDashboard]', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };

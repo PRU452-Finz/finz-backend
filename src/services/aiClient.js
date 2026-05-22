@@ -1,5 +1,7 @@
 'use strict';
 
+const logger = require('../config/logger');
+
 /**
  * AI Client — HTTP wrapper ke Flask AI API
  *
@@ -18,12 +20,19 @@
  */
 
 const axios = require('axios');
+const { createBreaker } = require('./circuitBreaker');
 
 // ─────────────────────────────────────────────────────────────
 // Config
 // ─────────────────────────────────────────────────────────────
 const AI_BASE_URL = process.env.AI_API_URL || 'http://localhost:5000';
 const TIMEOUT_MS  = 15000; // 15 detik timeout
+const HEALTH_CACHE_TTL_MS = 30 * 1000;
+
+let healthAvailabilityCache = {
+  expiresAt: 0,
+  value: false,
+};
 
 const client = axios.create({
   baseURL: AI_BASE_URL,
@@ -73,11 +82,11 @@ const mapAiCategory = (aiCategory) => {
 const handleError = (err, context) => {
   if (err.response) {
     // AI API returned an error response
-    console.error(`[aiClient.${context}] AI API error ${err.response.status}:`, err.response.data);
+    logger.error(`[aiClient.${context}] AI API error ${err.response.status}:`, err.response.data);
   } else if (err.code === 'ECONNREFUSED' || err.code === 'ECONNABORTED') {
-    console.error(`[aiClient.${context}] AI API unreachable (${err.code})`);
+    logger.error(`[aiClient.${context}] AI API unreachable (${err.code})`);
   } else {
-    console.error(`[aiClient.${context}]`, err.message);
+    logger.error(`[aiClient.${context}]`, err.message);
   }
   throw err;
 };
@@ -91,7 +100,7 @@ const handleError = (err, context) => {
  * @param {string|string[]} deskripsi
  * @returns {Promise<object>} Response dari AI API
  */
-const predictKategori = async (deskripsi) => {
+const predictKategoriRequest = async (deskripsi) => {
   try {
     const { data } = await client.post('/predict/kategori', { deskripsi });
     return data;
@@ -105,7 +114,7 @@ const predictKategori = async (deskripsi) => {
  * @param {object} payload — { total_pengeluaran, total_income, n_transaksi, avg_pengeluaran, saldo_awal, ...kategori }
  * @returns {Promise<object>}
  */
-const predictSaldo = async (payload) => {
+const predictSaldoRequest = async (payload) => {
   try {
     const { data } = await client.post('/predict/saldo', payload);
     return data;
@@ -119,7 +128,7 @@ const predictSaldo = async (payload) => {
  * @param {object} payload — { transaksi: [{deskripsi, jumlah}], saldo_awal, total_income }
  * @returns {Promise<object>}
  */
-const predictBatch = async (payload) => {
+const predictBatchRequest = async (payload) => {
   try {
     const { data } = await client.post('/predict/batch', payload);
     return data;
@@ -133,7 +142,7 @@ const predictBatch = async (payload) => {
  * @param {object} payload
  * @returns {Promise<object>}
  */
-const generateAlerts = async (payload) => {
+const generateAlertsRequest = async (payload) => {
   try {
     const { data } = await client.post('/alerts/generate', payload);
     return data;
@@ -148,7 +157,7 @@ const generateAlerts = async (payload) => {
  * @param {string} bulan — format "2026-05"
  * @returns {Promise<object>}
  */
-const getAlerts = async (userId, bulan) => {
+const getAlertsRequest = async (userId, bulan) => {
   try {
     const { data } = await client.get(`/alerts/${userId}/${bulan}`);
     return data;
@@ -156,6 +165,18 @@ const getAlerts = async (userId, bulan) => {
     handleError(err, 'getAlerts');
   }
 };
+
+const predictKategoriBreaker = createBreaker(predictKategoriRequest);
+const predictSaldoBreaker = createBreaker(predictSaldoRequest);
+const predictBatchBreaker = createBreaker(predictBatchRequest);
+const generateAlertsBreaker = createBreaker(generateAlertsRequest);
+const getAlertsBreaker = createBreaker(getAlertsRequest);
+
+const predictKategori = (...args) => predictKategoriBreaker.fire(...args);
+const predictSaldo = (...args) => predictSaldoBreaker.fire(...args);
+const predictBatch = (...args) => predictBatchBreaker.fire(...args);
+const generateAlerts = (...args) => generateAlertsBreaker.fire(...args);
+const getAlerts = (...args) => getAlertsBreaker.fire(...args);
 
 /**
  * Tandai alert sebagai dibaca
@@ -206,10 +227,22 @@ const healthCheck = async () => {
  * @returns {Promise<boolean>}
  */
 const isAvailable = async () => {
+  if (Date.now() < healthAvailabilityCache.expiresAt) {
+    return healthAvailabilityCache.value;
+  }
+
   try {
     await client.get('/health', { timeout: 3000 });
+    healthAvailabilityCache = {
+      expiresAt: Date.now() + HEALTH_CACHE_TTL_MS,
+      value: true,
+    };
     return true;
   } catch {
+    healthAvailabilityCache = {
+      expiresAt: Date.now() + HEALTH_CACHE_TTL_MS,
+      value: false,
+    };
     return false;
   }
 };

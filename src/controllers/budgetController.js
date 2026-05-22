@@ -1,5 +1,7 @@
 'use strict';
 
+const logger = require('../config/logger');
+
 /**
  * Budget Controller
  *
@@ -15,7 +17,7 @@ const { Budget } = require('../models');
 // ─────────────────────────────────────────────────────────────
 const index = async (req, res) => {
   try {
-    const userId = parseInt(req.params.user_id);
+    const userId = req.params.user_id;
 
     // Determine target month
     const now = new Date();
@@ -48,7 +50,7 @@ const index = async (req, res) => {
       period: monthDate, // YYYY-MM
     });
   } catch (err) {
-    console.error('[BudgetController.index]', err);
+    logger.error('[BudgetController.index]', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
@@ -124,7 +126,7 @@ const createOrUpdate = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('[BudgetController.createOrUpdate]', err);
+    logger.error('[BudgetController.createOrUpdate]', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
@@ -150,7 +152,7 @@ const destroy = async (req, res) => {
       message: 'Budget berhasil dihapus.',
     });
   } catch (err) {
-    console.error('[BudgetController.destroy]', err);
+    logger.error('[BudgetController.destroy]', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };

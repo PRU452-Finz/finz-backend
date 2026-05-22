@@ -13,14 +13,19 @@ const Transaction = sequelize.define(
   'Transaction',
   {
     id: {
-      type: DataTypes.INTEGER.UNSIGNED,
-      autoIncrement: true,
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
     },
     user_id: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.UUID,
       allowNull: false,
-      defaultValue: 1, // Default user sampai auth diimplementasi
+      references: {
+        model: 'users',
+        key: 'id',
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'CASCADE',
       comment: 'ID pengguna pemilik transaksi',
     },
     amount: {
@@ -76,7 +81,7 @@ const Transaction = sequelize.define(
       comment: 'Bedakan pemasukan vs pengeluaran',
     },
     hour_of_day: {
-      type: DataTypes.TINYINT,
+      type: DataTypes.SMALLINT,
       allowNull: true,
       comment: 'Jam transaksi untuk pola temporal (0-23)',
     },
@@ -90,27 +95,6 @@ const Transaction = sequelize.define(
       type: DataTypes.DATEONLY,
       allowNull: false,
       comment: 'Tanggal transaksi (YYYY-MM-DD)',
-    },
-    transaction_type: {
-      type: DataTypes.ENUM('expense', 'income'),
-      allowNull: false,
-      defaultValue: 'expense',
-      comment: 'Jenis transaksi: pengeluaran atau pemasukan',
-    },
-    hour_of_day: {
-      type: DataTypes.TINYINT.UNSIGNED,
-      allowNull: true,
-      validate: {
-        min: 0,
-        max: 23,
-      },
-      comment: 'Jam transaksi (0-23), untuk analisis pola waktu',
-    },
-    is_recurring: {
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: false,
-      comment: 'Apakah transaksi ini berulang setiap bulan?',
     },
     created_at: {
       type: DataTypes.DATE,

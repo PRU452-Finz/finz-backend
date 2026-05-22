@@ -1,5 +1,7 @@
 'use strict';
 
+const logger = require('../config/logger');
+
 /**
  * AI Service
  *
@@ -16,6 +18,8 @@ const { Op } = require('sequelize');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
 const aiClient = require('./aiClient');
+const cacheService = require('./cacheService');
+const { sanitizeText } = require('../utils/textSanitizer');
 
 // ─────────────────────────────────────────────────────────────
 // 1.  Prediksi Saldo Akhir Bulan
@@ -27,7 +31,11 @@ const aiClient = require('./aiClient');
  *
  * @param {object} params  { current_balance, user_id }
  */
-const predictBalance = async ({ current_balance, user_id = 1 }) => {
+const predictBalance = async ({ current_balance, user_id }) => {
+  const cacheKey = cacheService.keys.prediction(user_id, 'balance');
+  const cached = await cacheService.get(cacheKey);
+  if (cached) return cached;
+
   const now = new Date();
   const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
     .toISOString()
@@ -102,7 +110,7 @@ const predictBalance = async ({ current_balance, user_id = 1 }) => {
         // AI model output tidak masuk akal, fallback ke simple math
         const projectedAdditional = avgPerDay * daysRemaining;
         predicted = parseFloat(current_balance) - projectedAdditional;
-        console.warn(`[aiService.predictBalance] AI prediction out of range (${aiResult.prediksi_saldo_akhir}), using fallback: ${predicted}`);
+        logger.warn(`[aiService.predictBalance] AI prediction out of range (${aiResult.prediksi_saldo_akhir}), using fallback: ${predicted}`);
       }
 
       const ratio = parseFloat(current_balance) > 0
@@ -120,7 +128,7 @@ const predictBalance = async ({ current_balance, user_id = 1 }) => {
         bahaya:  'Peringatan! Saldo kamu berisiko habis sebelum akhir bulan. Segera kurangi pengeluaran.',
       };
 
-      return {
+      const result = {
         current_balance: parseFloat(current_balance),
         spent_so_far: spentSoFar,
         avg_per_day: avgPerDay,
@@ -131,9 +139,12 @@ const predictBalance = async ({ current_balance, user_id = 1 }) => {
         ai_powered: true,
         cached: aiResult.cached || false,
       };
+
+      await cacheService.set(cacheKey, result, cacheService.TTL.PREDICTION);
+      return result;
     }
   } catch (err) {
-    console.warn('[aiService.predictBalance] AI API fallback:', err.message);
+    logger.warn('[aiService.predictBalance] AI API fallback:', err.message);
   }
 
   // ── Fallback: Mock calculation ──────────────────────────────
@@ -152,7 +163,7 @@ const predictBalance = async ({ current_balance, user_id = 1 }) => {
     bahaya:  'Peringatan! Saldo kamu berisiko habis sebelum akhir bulan. Segera kurangi pengeluaran.',
   };
 
-  return {
+  const result = {
     current_balance: parseFloat(current_balance),
     spent_so_far: spentSoFar,
     avg_per_day: avgPerDay,
@@ -162,6 +173,9 @@ const predictBalance = async ({ current_balance, user_id = 1 }) => {
     message: messages[status],
     ai_powered: false,
   };
+
+  await cacheService.set(cacheKey, result, cacheService.TTL.PREDICTION);
+  return result;
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -177,13 +191,14 @@ const predictBalance = async ({ current_balance, user_id = 1 }) => {
  */
 const predictCategory = async (description) => {
   if (!description) return { category: 'lainnya', confidence: 0, ai_powered: false };
+  const cleanDesc = sanitizeText(description);
 
   // ── Coba panggil AI API ────────────────────────────────────
   try {
     const aiAvailable = await aiClient.isAvailable();
 
     if (aiAvailable) {
-      const aiResult = await aiClient.predictKategori(description);
+      const aiResult = await aiClient.predictKategori(cleanDesc);
 
       // AI returns: { deskripsi, kategori, confidence, latency_ms }
       const aiCategory = aiResult.kategori;
@@ -198,11 +213,11 @@ const predictCategory = async (description) => {
       };
     }
   } catch (err) {
-    console.warn('[aiService.predictCategory] AI API fallback:', err.message);
+    logger.warn('[aiService.predictCategory] AI API fallback:', err.message);
   }
 
   // ── Fallback: Rule-based keyword matching ───────────────────
-  return predictCategoryFallback(description);
+  return predictCategoryFallback(cleanDesc || description);
 };
 
 // ── Rule-based fallback (original mock logic) ─────────────────
@@ -336,9 +351,13 @@ const GENERAL_RECOMMENDATIONS = [
 
 /**
  * Buat daftar rekomendasi berdasarkan pola transaksi user
- * @param {number} user_id
+ * @param {string} user_id
  */
-const getRecommendations = async (user_id = 1) => {
+const getRecommendations = async (user_id) => {
+  const cacheKey = cacheService.keys.recommendations(user_id);
+  const cached = await cacheService.get(cacheKey);
+  if (cached) return cached;
+
   const now = new Date();
   const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
     .toISOString()
@@ -347,7 +366,6 @@ const getRecommendations = async (user_id = 1) => {
     .toISOString()
     .slice(0, 10);
 
-  const { Op } = require('sequelize');
   const txns = await Transaction.findAll({
     where: {
       user_id,
@@ -356,7 +374,10 @@ const getRecommendations = async (user_id = 1) => {
   });
 
   const total = txns.reduce((s, t) => s + parseFloat(t.amount), 0);
-  if (total === 0) return GENERAL_RECOMMENDATIONS;
+  if (total === 0) {
+    await cacheService.set(cacheKey, GENERAL_RECOMMENDATIONS, cacheService.TTL.RECOMMENDATIONS);
+    return GENERAL_RECOMMENDATIONS;
+  }
 
   // Hitung porsi per kategori
   const categoryTotals = {};
@@ -379,7 +400,9 @@ const getRecommendations = async (user_id = 1) => {
   }
 
   // Selalu sertakan rekomendasi umum
-  return [...recommendations, ...GENERAL_RECOMMENDATIONS];
+  const result = [...recommendations, ...GENERAL_RECOMMENDATIONS];
+  await cacheService.set(cacheKey, result, cacheService.TTL.RECOMMENDATIONS);
+  return result;
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -388,9 +411,13 @@ const getRecommendations = async (user_id = 1) => {
 
 /**
  * Hitung financial health score berdasarkan pola transaksi
- * @param {number} user_id
+ * @param {string} user_id
  */
-const getFinancialScore = async (user_id = 1) => {
+const getFinancialScore = async (user_id) => {
+  const cacheKey = cacheService.keys.financialScore(user_id);
+  const cached = await cacheService.get(cacheKey);
+  if (cached) return cached;
+
   const now = new Date();
   const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
     .toISOString()
@@ -399,7 +426,6 @@ const getFinancialScore = async (user_id = 1) => {
     .toISOString()
     .slice(0, 10);
 
-  const { Op } = require('sequelize');
   const txns = await Transaction.findAll({
     where: {
       user_id,
@@ -408,7 +434,7 @@ const getFinancialScore = async (user_id = 1) => {
   });
 
   if (txns.length === 0) {
-    return {
+    const result = {
       score: 75,
       level: 'Belum Ada Data',
       breakdown: {
@@ -418,6 +444,9 @@ const getFinancialScore = async (user_id = 1) => {
         bill_payment: 50,
       },
     };
+
+    await cacheService.set(cacheKey, result, cacheService.TTL.FINANCIAL_SCORE);
+    return result;
   }
 
   // Pisahkan income vs expense untuk financial score
@@ -476,7 +505,7 @@ const getFinancialScore = async (user_id = 1) => {
     return 'Tidak Sehat';
   };
 
-  return {
+  const result = {
     score,
     level: getLevel(score),
     breakdown: {
@@ -486,6 +515,9 @@ const getFinancialScore = async (user_id = 1) => {
       bill_payment:          Math.round(billPayment),
     },
   };
+
+  await cacheService.set(cacheKey, result, cacheService.TTL.FINANCIAL_SCORE);
+  return result;
 };
 
 // ─────────────────────────────────────────────────────────────

@@ -1,5 +1,7 @@
 'use strict';
 
+const logger = require('../config/logger');
+
 /**
  * Auth Controller
  *
@@ -9,9 +11,7 @@
 
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-
-const JWT_SECRET = process.env.JWT_SECRET || 'finz-default-secret-change-me';
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+const { JWT_SECRET, JWT_EXPIRES_IN } = require('../config/auth');
 
 /**
  * Generate JWT token for a user
@@ -80,7 +80,7 @@ const register = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('[AuthController.register]', err);
+    logger.error('[AuthController.register]', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
@@ -131,7 +131,7 @@ const login = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('[AuthController.login]', err);
+    logger.error('[AuthController.login]', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
@@ -155,7 +155,7 @@ const me = async (req, res) => {
       data: user.toSafeJSON(),
     });
   } catch (err) {
-    console.error('[AuthController.me]', err);
+    logger.error('[AuthController.me]', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };

@@ -1,5 +1,7 @@
 'use strict';
 
+const logger = require('../config/logger');
+
 /**
  * Auth Middleware — JWT Verification
  *
@@ -10,8 +12,7 @@
 
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-
-const JWT_SECRET = process.env.JWT_SECRET || 'finz-default-secret-change-me';
+const { JWT_SECRET } = require('../config/auth');
 
 const authMiddleware = async (req, res, next) => {
   try {
@@ -58,11 +59,12 @@ const authMiddleware = async (req, res, next) => {
       id: user.id,
       name: user.name,
       email: user.email,
+      initial_balance: user.initial_balance,
     };
 
     next();
   } catch (err) {
-    console.error('[AuthMiddleware] Error:', err);
+    logger.error('[AuthMiddleware] Error:', err);
     return res.status(500).json({
       success: false,
       message: 'Internal server error',

@@ -1,5 +1,7 @@
 'use strict';
 
+const logger = require('../config/logger');
+
 /**
  * Transaction Controller
  *
@@ -36,22 +38,27 @@ const handleValidationErrors = (req, res) => {
 const index = async (req, res) => {
   try {
     const { category, date_from, date_to } = req.query;
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 20;
     const user_id = req.user.id;
 
-    const transactions = await transactionService.getAllTransactions({
+    const result = await transactionService.getAllTransactions({
       user_id,
       category,
       date_from,
       date_to,
+      page,
+      limit,
     });
 
     return res.status(200).json({
       success: true,
-      count: transactions.length,
-      data: transactions,
+      count: result.data.length,
+      data: result.data,
+      pagination: result.pagination,
     });
   } catch (err) {
-    console.error('[TransactionController.index]', err);
+    logger.error('[TransactionController.index]', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
@@ -69,7 +76,7 @@ const show = async (req, res) => {
 
     return res.status(200).json({ success: true, data: transaction });
   } catch (err) {
-    console.error('[TransactionController.show]', err);
+    logger.error('[TransactionController.show]', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
@@ -93,7 +100,7 @@ const store = async (req, res) => {
       data: transaction,
     });
   } catch (err) {
-    console.error('[TransactionController.store]', err);
+    logger.error('[TransactionController.store]', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
@@ -118,7 +125,7 @@ const update = async (req, res) => {
       data: transaction,
     });
   } catch (err) {
-    console.error('[TransactionController.update]', err);
+    logger.error('[TransactionController.update]', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
@@ -136,7 +143,7 @@ const destroy = async (req, res) => {
 
     return res.status(200).json({ success: true, message: 'Transaksi berhasil dihapus' });
   } catch (err) {
-    console.error('[TransactionController.destroy]', err);
+    logger.error('[TransactionController.destroy]', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
