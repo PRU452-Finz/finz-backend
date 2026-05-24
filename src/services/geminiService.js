@@ -129,7 +129,7 @@ Respons HANYA berupa JSON array compact satu baris (tanpa markdown, tanpa penjel
   try {
     const result = await callWithRetry(async () => {
       const response = await ai.models.generateContent({
-        model: 'gemini-flash-latest',
+        model: 'gemini-2.5-flash',
         contents: prompt,
         config: { temperature: 0.3, maxOutputTokens: 600, thinkingConfig: { thinkingBudget: 0 } }
       });
@@ -168,7 +168,7 @@ Berikan JSON object compact satu baris (tanpa markdown, tanpa penjelasan lain):
   try {
     const result = await callWithRetry(async () => {
       const response = await ai.models.generateContent({
-        model: 'gemini-flash-latest',
+        model: 'gemini-2.5-flash',
         contents: prompt,
         config: { temperature: 0.3, maxOutputTokens: 150, thinkingConfig: { thinkingBudget: 0 } }
       });
@@ -220,7 +220,7 @@ Data keuangan user: ${context}`;
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-flash-latest',
+      model: 'gemini-2.5-flash',
       contents,
       config: {
         systemInstruction: { parts: [{ text: systemInstruction }] },
