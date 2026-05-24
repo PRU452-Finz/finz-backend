@@ -5,6 +5,7 @@ const logger = require('./logger');
 require('dotenv').config();
 
 const { Sequelize } = require('sequelize');
+const pg = require('pg'); // Wajib di-import eksplisit agar Vercel bundler membawanya ke serverless function
 
 const databaseConfig = {
   username: process.env.DB_USER,
@@ -26,12 +27,46 @@ const databaseConfig = {
   },
 };
 
-const sequelize = new Sequelize(
-  databaseConfig.database,
-  databaseConfig.username,
-  databaseConfig.password,
-  databaseConfig
-);
+// Enable SSL/TLS for Supabase and other cloud PostgreSQL providers
+const isCloudDb = 
+  process.env.DB_SSL === 'true' || 
+  (process.env.DB_HOST && (process.env.DB_HOST.includes('supabase') || process.env.DB_HOST.includes('supabase.co') || process.env.DB_HOST.includes('pooler.supabase.com'))) ||
+  (process.env.DATABASE_URL && (process.env.DATABASE_URL.includes('supabase') || process.env.DATABASE_URL.includes('supabase.co') || process.env.DATABASE_URL.includes('pooler.supabase.com')));
+
+if (isCloudDb) {
+  databaseConfig.dialectOptions = {
+    ssl: {
+      require: true,
+      rejectUnauthorized: false,
+    },
+  };
+}
+
+let sequelize;
+if (process.env.DATABASE_URL) {
+  const sequelizeOptions = {
+    dialect: 'postgres',
+    dialectModule: pg,
+    logging: databaseConfig.logging,
+    pool: databaseConfig.pool,
+    timezone: databaseConfig.timezone,
+    define: databaseConfig.define,
+  };
+  if (isCloudDb) {
+    sequelizeOptions.dialectOptions = databaseConfig.dialectOptions;
+  }
+  sequelize = new Sequelize(process.env.DATABASE_URL, sequelizeOptions);
+} else {
+  sequelize = new Sequelize(
+    databaseConfig.database,
+    databaseConfig.username,
+    databaseConfig.password,
+    {
+      ...databaseConfig,
+      dialectModule: pg,
+    }
+  );
+}
 
 sequelize.development = databaseConfig;
 sequelize.test = databaseConfig;
