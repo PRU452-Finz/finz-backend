@@ -4,7 +4,7 @@ const CircuitBreaker = require('opossum');
 const logger = require('../config/logger');
 
 const breakerOptions = {
-  timeout: 10000,
+  timeout: 30000,
   errorThresholdPercentage: 50,
   resetTimeout: 30000,
   volumeThreshold: 5,

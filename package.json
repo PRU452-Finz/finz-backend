@@ -9,7 +9,8 @@
     "start": "node src/server.js",
     "migrate": "npx sequelize-cli db:migrate",
     "migrate:undo": "npx sequelize-cli db:migrate:undo",
-    "seed": "npx sequelize-cli db:seed:all"
+    "seed": "node src/database/seeder.js",
+    "seed:custom": "node src/database/customSeeder.js"
   },
   "keywords": [
     "finz",
@@ -21,6 +22,7 @@
   "author": "FinZ Team",
   "license": "MIT",
   "dependencies": {
+    "@google/genai": "^2.6.0",
     "axios": "^1.7.0",
     "bcryptjs": "^3.0.3",
     "compression": "^1.8.1",

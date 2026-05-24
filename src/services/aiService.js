@@ -174,6 +174,31 @@ const predictBalance = async ({ current_balance, user_id }) => {
     ai_powered: false,
   };
 
+  // ── Gemini Integration for Budget Warning ──
+  const geminiService = require('./geminiService');
+  if (geminiService.isConfigured()) {
+    try {
+      const categoryTotals = {};
+      for (const t of rows) {
+        if (t.transaction_type === 'income') continue;
+        categoryTotals[t.category] = (categoryTotals[t.category] || 0) + parseFloat(t.amount);
+      }
+      
+      const warning = await geminiService.generateBudgetWarning({
+        currentBalance: parseFloat(current_balance),
+        totalIncome,
+        totalExpense: spentSoFar,
+        categoryBreakdown: categoryTotals
+      });
+      
+      result.status = warning.status || result.status;
+      result.message = warning.message || result.message;
+      result.ai_powered = true; // Mark as AI powered by Gemini
+    } catch (err) {
+      logger.warn('[aiService.predictBalance] Gemini fallback:', err.message);
+    }
+  }
+
   await cacheService.set(cacheKey, result, cacheService.TTL.PREDICTION);
   return result;
 };
@@ -381,8 +406,73 @@ const getRecommendations = async (user_id) => {
 
   // Hitung porsi per kategori
   const categoryTotals = {};
+  let totalIncome = 0;
+  let totalExpense = 0;
   for (const t of txns) {
-    categoryTotals[t.category] = (categoryTotals[t.category] || 0) + parseFloat(t.amount);
+    const amt = parseFloat(t.amount);
+    if (t.transaction_type === 'income') {
+      totalIncome += amt;
+    } else {
+      totalExpense += amt;
+      categoryTotals[t.category] = (categoryTotals[t.category] || 0) + amt;
+    }
+  }
+
+  // ── Gemini Integration for Recommendations (+ Financial Health) ──
+  const geminiService = require('./geminiService');
+  if (geminiService.isConfigured()) {
+    try {
+      const user = await User.findByPk(user_id);
+      const initialBalance = user ? parseFloat(user.initial_balance) : 0;
+      const currentBalance = initialBalance + totalIncome - totalExpense;
+
+      // Hitung metrik financial health untuk konteks Gemini
+      const income = totalIncome > 0 ? totalIncome : (user ? parseFloat(user.monthly_income) : 5000000);
+      const savingRatio = income > 0
+        ? Math.max(0, Math.min(100, ((income - totalExpense) / income) * 100))
+        : 50;
+
+      const dailyMap = {};
+      for (const t of txns) {
+        if (t.transaction_type === 'income') continue;
+        dailyMap[t.date] = (dailyMap[t.date] || 0) + parseFloat(t.amount);
+      }
+      const dailyAmounts = Object.values(dailyMap);
+      let spendingConsistency = 100;
+      if (dailyAmounts.length > 0) {
+        const avg = dailyAmounts.reduce((a, b) => a + b, 0) / dailyAmounts.length;
+        const variance = dailyAmounts.reduce((s, d) => s + Math.pow(d - avg, 2), 0) / dailyAmounts.length;
+        const cv = avg > 0 ? Math.sqrt(variance) / avg : 0;
+        spendingConsistency = Math.max(0, Math.min(100, 100 - cv * 50));
+      }
+      const categoryDiversity = Math.min(100, (Object.keys(categoryTotals).length / 6) * 100);
+      const billPayment = categoryTotals['tagihan'] > 0 ? 80 : 50;
+      const overallScore = Math.round(
+        savingRatio * 0.35 + spendingConsistency * 0.30 + categoryDiversity * 0.20 + billPayment * 0.15
+      );
+
+      const dynamicRecs = await geminiService.generateRecommendations({
+        currentBalance,
+        totalIncome,
+        totalExpense,
+        categoryBreakdown: categoryTotals,
+        healthScore: {
+          overall: overallScore,
+          saving_ratio: Math.round(savingRatio),
+          spending_consistency: Math.round(spendingConsistency),
+          category_diversity: Math.round(categoryDiversity),
+          bill_payment: Math.round(billPayment),
+        },
+      });
+
+      if (dynamicRecs && dynamicRecs.length > 0) {
+        const result = [...dynamicRecs, ...GENERAL_RECOMMENDATIONS].slice(0, 4);
+        await cacheService.set(cacheKey, result, cacheService.TTL.RECOMMENDATIONS);
+        return result;
+      }
+    } catch (err) {
+      logger.warn('[aiService.getRecommendations] Gemini fallback:', err.message);
+    }
   }
 
   const recommendations = [];

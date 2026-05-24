@@ -28,6 +28,7 @@ const budgetRoutes      = require('./routes/budgetRoutes');
 const adminRoutes       = require('./routes/adminRoutes');
 const userRoutes        = require('./routes/userRoutes');
 const authRoutes        = require('./routes/authRoutes');
+const chatRoutes        = require('./routes/chatRoutes');
 
 const app = express();
 
@@ -128,6 +129,7 @@ app.use('/api/budget-alert', apiLimiter,  budgetAlertRoutes); // Gunakan middlew
 app.use('/api/budgets',      apiLimiter,  budgetRoutes);
 app.use('/api/admin',        apiLimiter,  adminRoutes);
 app.use('/api/users',        apiLimiter,  userRoutes);
+app.use('/api/chat',         apiLimiter,  chatRoutes); // AI Chatbot
 app.use('/api',              apiLimiter,  aiRoutes);
 
 // ─────────────────────────────────────────────────────────────

@@ -17,7 +17,8 @@
 const express = require('express');
 const router  = express.Router();
 
-const authMiddleware = require('../middlewares/authMiddleware');
+const authMiddleware  = require('../middlewares/authMiddleware');
+const ownershipCheck  = require('../middlewares/ownershipCheck');
 const aiController = require('../controllers/aiController');
 const {
   predictBalanceRules,
@@ -34,9 +35,9 @@ router.use(authMiddleware);
 router.post('/predict/balance',    predictBalanceRules,   aiController.predictBalance);
 router.post('/predict/category',   predictCategoryRules,  aiController.predictCategory);
 
-// ── Rekomendasi & Score ──────────────────────────────────────
-router.get('/recommendation/:user_id',  aiController.getRecommendations);
-router.get('/financial-score/:user_id', aiController.getFinancialScore);
+// ── Rekomendasi & Score (IDOR-protected) ─────────────────────
+router.get('/recommendation/:user_id',  ownershipCheck, aiController.getRecommendations);
+router.get('/financial-score/:user_id', ownershipCheck, aiController.getFinancialScore);
 
 // ── Budget Alert routes are handled by budgetAlertRoutes.js ──
 // See: /api/budget-alert/* in budgetAlertRoutes.js
