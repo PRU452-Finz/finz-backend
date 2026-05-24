@@ -86,7 +86,7 @@ Jumlah transaksi: ${transactions.length}
       });
     }
 
-    return res.status(500).json({ success: false, message: 'Gagal mendapatkan respons dari AI.' });
+    return res.status(500).json({ success: false, message: 'Gagal mendapatkan respons dari AI.', error: err.message, stack: err.stack });
   }
 };
 
