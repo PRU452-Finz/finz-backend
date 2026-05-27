@@ -17,8 +17,8 @@ const getAI = () => {
   return _ai;
 };
 
-/** Cek apakah API key tersedia (dinamis, bukan statis) */
-const isConfigured = () => !!process.env.GEMINI_API_KEY;
+/** Gemini DISABLED — Tim AI sudah deploy Gemini via HuggingFace Spaces */
+const isConfigured = () => false; // return !!process.env.GEMINI_API_KEY;
 
 /**
  * Helper: ekstrak teks dari respons Gemini

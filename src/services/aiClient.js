@@ -247,6 +247,48 @@ const isAvailable = async () => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────
+// NEW: Chat AI Konsultasi (proxy ke HuggingFace /chat)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Kirim pertanyaan ke AI Chat (Gemini via HuggingFace)
+ * @param {object} payload — { pertanyaan, user_id, data_keuangan, riwayat_chat }
+ * @returns {Promise<object>} { jawaban, latency_ms }
+ */
+const chatAskRequest = async (payload) => {
+  try {
+    const { data } = await client.post('/chat', payload, { timeout: 30000 });
+    return data;
+  } catch (err) {
+    handleError(err, 'chatAsk');
+  }
+};
+
+const chatAskBreaker = createBreaker(chatAskRequest);
+const chatAsk = (...args) => chatAskBreaker.fire(...args);
+
+// ─────────────────────────────────────────────────────────────
+// NEW: Health Score (proxy ke HuggingFace /health/score)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Kalkulasi skor kesehatan keuangan via AI
+ * @param {object} payload — { user_id, bulan, total_income, total_pengeluaran, ... }
+ * @returns {Promise<object>} { skor_total, grade, predikat, ringkasan, komponen }
+ */
+const healthScoreRequest = async (payload) => {
+  try {
+    const { data } = await client.post('/health/score', payload);
+    return data;
+  } catch (err) {
+    handleError(err, 'healthScore');
+  }
+};
+
+const healthScoreBreaker = createBreaker(healthScoreRequest);
+const healthScore = (...args) => healthScoreBreaker.fire(...args);
+
 module.exports = {
   predictKategori,
   predictSaldo,
@@ -257,8 +299,11 @@ module.exports = {
   getAlertHistory,
   healthCheck,
   isAvailable,
+  chatAsk,
+  healthScore,
   mapAiCategory,
   AI_TO_BACKEND_CATEGORY,
   BACKEND_TO_AI_CATEGORY,
   AI_BASE_URL,
 };
+

@@ -5,14 +5,17 @@
  *
  * POST /api/chat/ask
  * Menerima pesan user, mengambil konteks keuangan real-time,
- * lalu mengirimkannya ke Gemini sebagai penasihat keuangan personal.
+ * lalu mengirimkannya ke AI API (HuggingFace) sebagai penasihat keuangan personal.
+ *
+ * Sebelumnya: langsung ke Gemini via geminiService
+ * Sekarang:   proxy ke HuggingFace /chat (tim AI sudah deploy Gemini di sana)
  */
 
 const logger = require('../config/logger');
 const { Op } = require('sequelize');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
-const geminiService = require('../services/geminiService');
+const aiClient = require('../services/aiClient');
 
 const askChat = async (req, res) => {
   try {
@@ -50,43 +53,47 @@ const askChat = async (req, res) => {
       }
     }
 
-    const currentBalance = (user ? parseFloat(user.initial_balance) : 0) + totalIncome - totalExpense;
+    const saldoAwal = user ? parseFloat(user.initial_balance) : 0;
 
-    // Top 3 kategori pengeluaran
-    const topCategories = Object.entries(categoryTotals)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 3)
-      .map(([cat, amt]) => `${cat}: Rp ${amt.toLocaleString('id-ID')}`)
-      .join(', ');
+    // ─── Kirim ke HuggingFace /chat ──────────────────────────
+    // Format sesuai README tim AI
+    const payload = {
+      pertanyaan: message.trim(),
+      user_id: String(userId),
+      data_keuangan: {
+        total_income: totalIncome,
+        total_pengeluaran: totalExpense,
+        saldo_awal: saldoAwal,
+        pengeluaran_per_kategori: categoryTotals,
+      },
+      riwayat_chat: history.map(h => ({
+        role: h.role === 'assistant' ? 'model' : 'user',
+        content: h.content,
+      })),
+    };
 
-    const financialContext = `
-Nama user: ${user?.name || 'Pengguna'}
-Bulan: ${now.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
-Saldo saat ini: Rp ${currentBalance.toLocaleString('id-ID')}
-Total pemasukan bulan ini: Rp ${totalIncome.toLocaleString('id-ID')}
-Total pengeluaran bulan ini: Rp ${totalExpense.toLocaleString('id-ID')}
-Top 3 kategori pengeluaran: ${topCategories || 'Belum ada transaksi bulan ini'}
-Jumlah transaksi: ${transactions.length}
-`.trim();
-
-    const reply = await geminiService.generateChatResponse(message.trim(), history, financialContext);
+    const aiResult = await aiClient.chatAsk(payload);
 
     return res.status(200).json({
       success: true,
-      data: { reply, context_used: true },
+      data: {
+        reply: aiResult.jawaban,
+        context_used: true,
+        latency_ms: aiResult.latency_ms,
+      },
     });
   } catch (err) {
     logger.error('[ChatController.askChat]', err);
 
-    // Jika Gemini belum dikonfigurasi
-    if (err.message?.includes('GEMINI_API_KEY')) {
+    // Jika AI API tidak tersedia
+    if (err.code === 'ECONNREFUSED' || err.code === 'ECONNABORTED') {
       return res.status(503).json({
         success: false,
-        message: 'Fitur AI Chat belum dikonfigurasi. Hubungi administrator.',
+        message: 'Fitur AI Chat sedang tidak tersedia. Coba lagi nanti.',
       });
     }
 
-    return res.status(500).json({ success: false, message: 'Gagal mendapatkan respons dari AI.', error: err.message, stack: err.stack });
+    return res.status(500).json({ success: false, message: 'Gagal mendapatkan respons dari AI.' });
   }
 };
 
