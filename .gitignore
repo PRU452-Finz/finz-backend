@@ -2,3 +2,12 @@ node_modules/
 .env
 *.log
 dist/
+
+# Debug & test scripts
+test_*.js
+debug_*.js
+fix_*.js
+patch*.js
+
+# Database dumps
+*.sql
