@@ -46,6 +46,21 @@ const getDashboardSummary = async (user_id) => {
     order: [['date', 'ASC']],
   });
 
+  // ─── 1b. ALL-TIME transaksi untuk saldo kumulatif ─────────────
+  const allTimeTxns = await Transaction.findAll({
+    where: { user_id },
+    attributes: ['amount', 'transaction_type'],
+  });
+
+  let allTimeIncome = 0;
+  let allTimeSpending = 0;
+  for (const t of allTimeTxns) {
+    const amount = parseFloat(t.amount);
+    if (t.transaction_type === 'income') allTimeIncome += amount;
+    else allTimeSpending += amount;
+  }
+  const currentBalance = initialBalance + allTimeIncome - allTimeSpending;
+
   // ─── 2. Total pengeluaran & pemasukan ─────────────────────────
   let totalSpending = 0;
   let totalIncome = 0;
@@ -132,6 +147,7 @@ const getDashboardSummary = async (user_id) => {
   const avgDaily = uniqueDays > 0 ? totalSpending / uniqueDays : 0;
 
   const result = {
+    // Bulan berjalan
     total_spending: totalSpending,
     total_income: totalIncome,
     transaction_count: thisMonthTxns.length,
@@ -140,6 +156,10 @@ const getDashboardSummary = async (user_id) => {
     daily_breakdown: dailyBreakdown,
     monthly_breakdown: monthlyBreakdown,
     period: { from: firstDay, to: lastDay },
+    // Saldo kumulatif (all-time)
+    current_balance: currentBalance,
+    all_time_income: allTimeIncome,
+    all_time_spending: allTimeSpending,
   };
 
   await cacheService.set(cacheKey, result, cacheService.TTL.DASHBOARD);
