@@ -225,17 +225,18 @@ const predictCategory = async (description) => {
     if (aiAvailable) {
       const aiResult = await aiClient.predictKategori(cleanDesc);
 
-      // aiClient destructures { data } from Flask response:
-      // Flask: { data: { predicted_category, confidence, input_received }, latency_ms, status }
-      // aiResult = { predicted_category, confidence, input_received }
-      const aiCategory = aiResult.predicted_category;
+      // Flask response: { data: { predicted_category, confidence, input_received }, latency_ms, status }
+      // aiClient does: const { data } = await axios.post(...) → returns Flask body
+      // So aiResult = { data: { predicted_category, confidence }, latency_ms, status }
+      const aiCategory = aiResult?.data?.predicted_category;
       const backendCategory = aiClient.mapAiCategory(aiCategory);
 
       return {
         category: backendCategory,
-        confidence: aiResult.confidence,
+        confidence: aiResult?.data?.confidence,
         ai_category: aiCategory,
         ai_powered: true,
+        latency_ms: aiResult?.latency_ms,
       };
     }
   } catch (err) {

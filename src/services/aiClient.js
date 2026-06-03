@@ -46,8 +46,10 @@ const client = axios.create({
 // Backend ENUM: lowercase slug (8 kategori)
 // ─────────────────────────────────────────────────────────────
 const AI_TO_BACKEND_CATEGORY = {
+  // Kategori utama dari Flask model
   'Tagihan':               'tagihan',
-  'Makan & Minum':         'makanan',
+  'Makanan & Minuman':     'makanan',   // ← nama aktual dari Flask model
+  'Makan & Minum':         'makanan',   // alias fallback
   'Transportasi':          'transport',
   'Hiburan':               'hiburan',
   'Belanja Online':        'belanja',
