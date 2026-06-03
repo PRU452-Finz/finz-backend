@@ -225,8 +225,10 @@ const predictCategory = async (description) => {
     if (aiAvailable) {
       const aiResult = await aiClient.predictKategori(cleanDesc);
 
-      // AI returns: { deskripsi, kategori, confidence, latency_ms }
-      const aiCategory = aiResult.kategori;
+      // aiClient destructures { data } from Flask response:
+      // Flask: { data: { predicted_category, confidence, input_received }, latency_ms, status }
+      // aiResult = { predicted_category, confidence, input_received }
+      const aiCategory = aiResult.predicted_category;
       const backendCategory = aiClient.mapAiCategory(aiCategory);
 
       return {
@@ -234,7 +236,6 @@ const predictCategory = async (description) => {
         confidence: aiResult.confidence,
         ai_category: aiCategory,
         ai_powered: true,
-        latency_ms: aiResult.latency_ms,
       };
     }
   } catch (err) {
