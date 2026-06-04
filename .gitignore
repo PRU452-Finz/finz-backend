@@ -11,3 +11,12 @@ patch*.js
 
 # Database dumps
 *.sql
+
+# Documentation & non-production files
+.agent/
+document/
+docs/
+Ceklis.md
+IOT.md
+TECHNICAL.md
+*.code-workspace
